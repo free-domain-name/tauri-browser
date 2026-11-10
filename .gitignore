@@ -1,0 +1,26 @@
+# Rust / Tauri
+/target
+/src-tauri/target
+/src-tauri/gen
+/src-tauri/.tauri
+/src-tauri/icons/*.png.bak
+
+# Node
+node_modules
+npm-debug.log*
+pnpm-debug.log*
+yarn-error.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea
+.vscode/*
+!.vscode/extensions.json
+
+# Local environment
+.env
+.env.*
+
+# Local tooling artifacts
+.dsh-vision-router/

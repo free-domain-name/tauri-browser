@@ -1,0 +1,42 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Free Domain Browser",
+  "version": "0.1.0",
+  "identifier": "org.free-domain.browser",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Free Domain Browser",
+        "width": 1200,
+        "height": 820,
+        "minWidth": 520,
+        "minHeight": 420,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http: fdn:; font-src 'self' data: https: http: fdn:; media-src 'self' data: blob: https: http: fdn:; frame-src fdn: http: https:; connect-src 'self' ipc: http://ipc.localhost https: http: fdn:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "Utility",
+    "shortDescription": "Browser with universal free-domain resolution",
+    "longDescription": "A lightweight browser that resolves names through the community Free Domain Name registry first, then falls back to public ICANN DNS, asking the user when both exist.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

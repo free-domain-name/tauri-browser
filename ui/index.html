@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Free Domain Browser</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="toolbar">
+        <div class="nav" role="group" aria-label="History">
+          <button id="back" class="icon" type="button" aria-label="Back" title="Back (Alt+Left)" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+          </button>
+          <button id="forward" class="icon" type="button" aria-label="Forward" title="Forward (Alt+Right)" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+          </button>
+          <button id="refresh" class="icon" type="button" aria-label="Refresh" title="Refresh (Ctrl+R)">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 11a8 8 0 1 0-2.3 6.3" />
+              <path d="M20 4v7h-7" />
+            </svg>
+          </button>
+          <button id="home" class="icon" type="button" aria-label="Home" title="Home">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 11.5 12 5l8 6.5" />
+              <path d="M6.5 10.5V19h11v-8.5" />
+            </svg>
+          </button>
+        </div>
+
+        <form id="omnibox" class="omnibox" autocomplete="off" role="search">
+          <span id="schemeDot" class="scheme-dot" title="Resolution source"></span>
+          <input
+            id="address"
+            type="text"
+            inputmode="url"
+            spellcheck="false"
+            autocapitalize="off"
+            aria-label="Address and search bar"
+            placeholder="Search or enter a domain — try hello.fdn"
+          />
+          <button id="go" class="go" type="submit" aria-label="Go" title="Go">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13" /><path d="M13 6l6 6-6 6" /></svg>
+          </button>
+        </form>
+
+        <div class="meta">
+          <span id="status" class="pill" data-source="idle" title="Resolution source">
+            <span class="dot" aria-hidden="true"></span>
+            <span id="statusText">Ready</span>
+          </span>
+          <button id="external" class="icon" type="button" aria-label="Open in system browser" title="Open in system browser">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M14 5h5v5" />
+              <path d="M19 5l-8 8" />
+              <path d="M18 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h4" />
+            </svg>
+          </button>
+          <button id="clear" class="icon" type="button" aria-label="Clear registry cache" title="Clear registry cache">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h16" />
+              <path d="M9 7V5h6v2" />
+              <path d="M6.5 7l.8 12h9.4l.8-12" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      <main class="viewport">
+        <section id="start" class="start" aria-label="Start page">
+          <div class="start-inner">
+            <div class="mark" aria-hidden="true">
+              <svg viewBox="0 0 64 64">
+                <circle cx="32" cy="32" r="23" />
+                <path d="M9 32h46" />
+                <path d="M32 9c7 6.5 10.5 14.2 10.5 23S39 48.5 32 55c-7-6.5-10.5-14.2-10.5-23S25 15.5 32 9z" />
+              </svg>
+            </div>
+            <h1>Every name, two worlds.</h1>
+            <p class="lede">
+              This browser asks the community Free Registry first. If the name is not there,
+              it falls back to the public web. If it is in both, you choose.
+            </p>
+
+            <div class="samples">
+              <button class="sample" type="button" data-url="hello.fdn">
+                <span class="sample-kind registry">registry only</span>
+                <strong>hello.fdn</strong>
+                <span>Resolved from GitHub, served through fdn://</span>
+              </button>
+              <button class="sample" type="button" data-url="google.com">
+                <span class="sample-kind conflict">conflict</span>
+                <strong>google.com</strong>
+                <span>Exists in the registry and in public DNS</span>
+              </button>
+              <button class="sample" type="button" data-url="ipmap.info">
+                <span class="sample-kind registry">hostname target</span>
+                <strong>ipmap.info</strong>
+                <span>Target is another hostname, Host stays ipmap.info</span>
+              </button>
+              <button class="sample" type="button" data-url="insecure.fdn">
+                <span class="sample-kind registry">port 8080</span>
+                <strong>insecure.fdn</strong>
+                <span>Plain HTTP with a non-default port</span>
+              </button>
+            </div>
+
+            <p class="fineprint">
+              Registry records are public and PR-reviewed at
+              <span class="mono">github.com/free-domain-name/registry</span>.
+              Public sites that send <span class="mono">X-Frame-Options</span> may refuse to
+              render here — use the external-open button in that case.
+            </p>
+          </div>
+        </section>
+
+        <iframe
+          id="frame"
+          title="Page content"
+          referrerpolicy="no-referrer"
+          allow="fullscreen; clipboard-read; clipboard-write"
+          hidden
+        ></iframe>
+        <div id="progress" class="progress" hidden aria-hidden="true"><span></span></div>
+      </main>
+    </div>
+
+    <div id="modal" class="modal" hidden>
+      <div class="backdrop" data-close="1"></div>
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div id="modalIcon" class="dialog-icon" aria-hidden="true">?</div>
+        <h2 id="modalTitle">This domain exists in both places</h2>
+        <p id="modalBody" class="modal-body">
+          Which destination would you like to visit?
+        </p>
+
+        <div id="conflictChoices" class="choices" hidden>
+          <button id="chooseRegistry" class="choice" type="button">
+            <span class="choice-kicker registry">Free GitHub Registry</span>
+            <strong>Visit Free Registry Site</strong>
+            <span id="registryTarget" class="mono"></span>
+          </button>
+          <button id="choosePublic" class="choice" type="button">
+            <span class="choice-kicker public">Public ICANN Web</span>
+            <strong>Visit Public Web Site</strong>
+            <span id="publicTarget" class="mono"></span>
+          </button>
+        </div>
+
+        <div id="unavailableActions" class="actions" hidden>
+          <button id="retry" type="button" class="secondary">Retry registry</button>
+          <button id="fallbackPublic" type="button" class="primary">Continue to public web</button>
+        </div>
+
+        <button id="modalCancel" class="link" type="button">Cancel</button>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" hidden></div>
+
+    <script type="module" src="main.js"></script>
+  </body>
+</html>

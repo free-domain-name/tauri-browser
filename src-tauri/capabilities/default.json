@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissions for the local browser chrome window. Remote pages loaded in the content iframe are not granted IPC access.",
+  "windows": ["main"],
+  "permissions": ["core:default", "opener:default"]
+}

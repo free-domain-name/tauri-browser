@@ -1,0 +1,56 @@
+[package]
+name = "free-domain-browser"
+version = "0.1.0"
+description = "A tiny cross-platform browser with free-domain registry resolution"
+authors = ["Free Domain Name contributors"]
+edition = "2021"
+rust-version = "1.82"
+license = "GPL-3.0-only"
+repository = "https://github.com/free-domain-name/tauri-browser"
+default-run = "free-domain-browser"
+
+[lib]
+name = "free_domain_browser_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+
+# Async runtime and timeouts for the registry fetcher / proxy.
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "fs", "macros"] }
+
+# Registry records are fetched from the GitHub raw CDN; proxied destinations
+# are fetched with this client too.
+reqwest = { version = "0.12", default-features = false, features = [
+  "rustls-tls",
+  "gzip",
+  "brotli",
+  "deflate",
+  "http2",
+] }
+
+# ICANN conflict detection. hickory-resolver is the maintained successor of
+# trust-dns-resolver.
+hickory-resolver = "0.26"
+
+url = "2"
+regex = "1"
+
+[features]
+# Kept for the Tauri CLI; the app does not need a custom protocol asset loader.
+default = []
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

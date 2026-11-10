@@ -134,6 +134,8 @@ function applyOutcome(outcome, { push = true } = {}) {
     source: outcome.source,
     domain: outcome.domain,
     path: outcome.path,
+    registryTarget: outcome.registry_target || null,
+    publicUrl: outcome.public_url || null,
     kind: "navigate",
   };
   if (push) pushHistory(entry);
@@ -245,11 +247,8 @@ function go(delta) {
 
 function refresh() {
   if (!state.current?.url) return;
-  try {
-    els.frame.contentWindow.location.reload();
-  } catch {
-    els.frame.src = state.current.url;
-  }
+  // Re-assigning src is the only reload that works across the iframe origin.
+  els.frame.src = state.current.url;
 }
 
 function openExternal() {
@@ -258,10 +257,19 @@ function openExternal() {
     return;
   }
   const current = state.current;
-  const url =
-    current.source === "public_icann"
-      ? current.url
-      : `https://${current.domain}${current.path === "/" ? "" : current.path}`;
+  let url = current.url;
+  if (current.source !== "public_icann") {
+    const base = current.registryTarget || `https://${current.domain}`;
+    if (current.path && current.path !== "/") {
+      try {
+        url = new URL(current.path, base).toString();
+      } catch {
+        url = base;
+      }
+    } else {
+      url = base;
+    }
+  }
   invoke("open_external", { url }).catch((error) => toast(String(error)));
 }
 

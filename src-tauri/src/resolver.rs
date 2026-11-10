@@ -391,14 +391,10 @@ impl Navigator {
         };
         match tokio::time::timeout(DNS_CONFLICT_TIMEOUT, resolver.lookup_ip(domain)).await {
             Ok(Ok(lookup)) => lookup.iter().next().is_some(),
-            Ok(Err(error)) => {
-                eprintln!("[resolver] public DNS check for {domain} failed: {error}");
-                false
-            }
-            Err(_) => {
-                eprintln!("[resolver] public DNS check for {domain} timed out");
-                false
-            }
+            // NXDOMAIN is the normal answer for registry-only names, so it is
+            // not logged. Timeouts are also treated as "does not resolve" so a
+            // slow resolver never blocks a registry navigation.
+            Ok(Err(_)) | Err(_) => false,
         }
     }
 }

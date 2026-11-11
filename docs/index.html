@@ -59,7 +59,7 @@
         "operatingSystem": "macOS, Linux, Windows, Android",
         "description": "A small open-source browser that resolves names through the Free Domain Name registry first, then public DNS, and asks the user when both exist.",
         "url": "https://free-domain-name.github.io/tauri-browser/",
-        "downloadUrl": "https://github.com/free-domain-name/tauri-browser/releases",
+        "downloadUrl": "https://github.com/free-domain-name/tauri-browser/releases/latest",
         "license": "https://www.gnu.org/licenses/gpl-3.0.html",
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "sameAs": ["https://github.com/free-domain-name/tauri-browser"]
@@ -79,6 +79,7 @@
         <nav class="desktop-nav" aria-label="Primary">
           <a href="#why">Why</a>
           <a href="#how">How it works</a>
+          <a href="#download">Download</a>
           <a href="#start">How to use</a>
           <a href="#skins">Skins</a>
           <a href="#customize">Customize</a>
@@ -123,6 +124,7 @@
             <nav aria-label="Mobile">
               <a href="#why">Why</a>
               <a href="#how">How it works</a>
+              <a href="#download">Download</a>
               <a href="#start">How to use</a>
               <a href="#skins">Skins</a>
               <a href="#customize">Customize</a>
@@ -145,11 +147,11 @@
               you which one you meant when a name exists in both.
             </p>
             <div class="hero-actions">
-              <a class="button primary" href="#start">
-                Read the quick start
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" /></svg>
+              <a class="button primary" href="#download">
+                Download for desktop
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></svg>
               </a>
-              <a class="button quiet" href="#skins">See the seven skins</a>
+              <a class="button quiet" href="#start">Read the quick start</a>
             </div>
             <ul class="hero-facts" aria-label="At a glance">
               <li><strong>2</strong><span>name systems checked</span></li>
@@ -200,6 +202,108 @@
           <div><strong>Conflict aware</strong><span>Two answers? You choose, not the browser.</span></div>
           <div><strong>Any unclaimed name</strong><span>Claim a name with a prefilled JSON PR.</span></div>
           <div><strong>GPLv3</strong><span>Small, readable and open source.</span></div>
+        </div>
+      </section>
+
+      <section class="section section-alt download-section" id="download">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <p class="kicker">Download</p>
+              <h2>Desktop builds, straight from CI.</h2>
+            </div>
+            <p class="section-lede">
+              GitHub Actions builds macOS, Windows and Linux packages from the same tagged
+              commit. Pick a platform, or open the latest release to see every asset.
+            </p>
+          </div>
+
+          <div class="download-grid">
+            <div class="download-copy">
+              <p class="download-version">
+                Latest release <strong data-release-version>GitHub Releases</strong>
+              </p>
+              <p class="download-note">
+                These builds are not notarized. macOS may ask you to allow the app under
+                <strong>System Settings → Privacy &amp; Security</strong>; Windows SmartScreen may
+                ask for confirmation. Android is currently built from source.
+              </p>
+              <div class="hero-actions">
+                <a
+                  class="button primary"
+                  href="https://github.com/free-domain-name/tauri-browser/releases/latest"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open latest release
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" /></svg>
+                </a>
+                <a
+                  class="button quiet"
+                  href="https://github.com/free-domain-name/tauri-browser/releases"
+                  target="_blank"
+                  rel="noreferrer"
+                >All releases</a>
+              </div>
+            </div>
+
+            <div class="download-cards">
+              <article class="download-card">
+                <span class="download-os">macOS</span>
+                <strong>Universal DMG</strong>
+                <span class="download-detail">Apple Silicon + Intel</span>
+                <a
+                  class="download-link"
+                  data-release-asset="macos"
+                  href="https://github.com/free-domain-name/tauri-browser/releases/latest"
+                  target="_blank"
+                  rel="noreferrer"
+                >Download .dmg</a>
+              </article>
+              <article class="download-card">
+                <span class="download-os">Windows</span>
+                <strong>x64 installers</strong>
+                <span class="download-detail">MSI or NSIS setup</span>
+                <div class="download-links">
+                  <a
+                    class="download-link"
+                    data-release-asset="windows-msi"
+                    href="https://github.com/free-domain-name/tauri-browser/releases/latest"
+                    target="_blank"
+                    rel="noreferrer"
+                  >.msi</a>
+                  <a
+                    class="download-link"
+                    data-release-asset="windows-exe"
+                    href="https://github.com/free-domain-name/tauri-browser/releases/latest"
+                    target="_blank"
+                    rel="noreferrer"
+                  >.exe</a>
+                </div>
+              </article>
+              <article class="download-card">
+                <span class="download-os">Linux</span>
+                <strong>x64 packages</strong>
+                <span class="download-detail">AppImage or Debian package</span>
+                <div class="download-links">
+                  <a
+                    class="download-link"
+                    data-release-asset="linux-appimage"
+                    href="https://github.com/free-domain-name/tauri-browser/releases/latest"
+                    target="_blank"
+                    rel="noreferrer"
+                  >AppImage</a>
+                  <a
+                    class="download-link"
+                    data-release-asset="linux-deb"
+                    href="https://github.com/free-domain-name/tauri-browser/releases/latest"
+                    target="_blank"
+                    rel="noreferrer"
+                  >.deb</a>
+                </div>
+              </article>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -361,8 +465,8 @@
               <h2>From zero to a resolved name.</h2>
             </div>
             <p class="section-lede">
-              There are no published binaries yet. Build the desktop app from source in a few
-              minutes, or use the same commands to produce an Android APK.
+              Download a prebuilt desktop package, or build from source in a few minutes.
+              The same commands also produce an Android APK.
             </p>
           </div>
 
@@ -371,11 +475,11 @@
               <li>
                 <span class="manual-number">1</span>
                 <div>
-                  <h3>Get a build</h3>
+                  <h3>Get the app</h3>
                   <p>
-                    Clone the repo, install dependencies and run <code>npm run dev</code>.
-                    The
-                    <a href="#build">build section</a> has the exact commands and platform
+                    Use the <a href="#download">desktop download</a> for a prebuilt package,
+                    or clone the repo, install dependencies and run <code>npm run dev</code>.
+                    The <a href="#build">build section</a> has the exact commands and platform
                     requirements.
                   </p>
                 </div>
@@ -872,8 +976,8 @@ npm run dev</code></pre>
               </article>
               <article>
                 <p class="kicker">Releases</p>
-                <h3>No binaries yet</h3>
-                <p>When a build is published it will appear in <a href="https://github.com/free-domain-name/tauri-browser/releases" target="_blank" rel="noreferrer">GitHub Releases</a>. Until then, build locally.</p>
+                <h3>GitHub Actions</h3>
+                <p>Pushing a <code>v*</code> tag builds macOS, Windows and Linux packages and publishes them to <a href="https://github.com/free-domain-name/tauri-browser/releases/latest" target="_blank" rel="noreferrer">GitHub Releases</a>.</p>
               </article>
             </div>
           </div>
@@ -902,6 +1006,16 @@ npm run dev</code></pre>
             <p class="section-lede">Short answers, no marketing.</p>
           </div>
           <div class="faq-list">
+            <details>
+              <summary>Where do I download it?</summary>
+              <p>
+                Use the <a href="#download">download section</a> or the
+                <a href="https://github.com/free-domain-name/tauri-browser/releases/latest" target="_blank" rel="noreferrer">latest GitHub release</a>.
+                GitHub Actions publishes a universal macOS DMG, Windows MSI/NSIS installers
+                and Linux AppImage/.deb packages. The builds are not notarized; Android is
+                currently built from source.
+              </p>
+            </details>
             <details>
               <summary>Does this replace DNS?</summary>
               <p>
@@ -975,7 +1089,7 @@ npm run dev</code></pre>
           <div>
             <h2>Project</h2>
             <a href="https://github.com/free-domain-name/tauri-browser" target="_blank" rel="noreferrer">Browser source</a>
-            <a href="https://github.com/free-domain-name/tauri-browser/releases" target="_blank" rel="noreferrer">Releases</a>
+            <a href="https://github.com/free-domain-name/tauri-browser/releases/latest" target="_blank" rel="noreferrer">Releases</a>
             <a href="https://github.com/free-domain-name/registry" target="_blank" rel="noreferrer">Registry</a>
           </div>
           <div>

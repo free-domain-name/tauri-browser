@@ -26,6 +26,20 @@ seven built-in skins and a custom CSS editor.
   </a>
 </p>
 
+## Download
+
+Prebuilt desktop packages are published from GitHub Actions:
+
+- **macOS** — universal DMG for Apple Silicon and Intel
+- **Windows x64** — MSI and NSIS installer
+- **Linux x64** — AppImage and Debian package
+
+Download the latest from
+[GitHub Releases](https://github.com/free-domain-name/tauri-browser/releases/latest).
+The builds are ad-hoc signed or unsigned and are not notarized, so macOS and
+Windows may ask you to confirm the first launch. Android is currently built
+from source.
+
 ## How resolution works
 
 ```
@@ -262,6 +276,24 @@ npm run android:build
 ```
 
 The webview loads `ui/` directly; there is no bundler or dev server.
+
+### Releases
+
+The release workflow lives in `.github/workflows/release.yml` and runs on a
+`v*` tag. It builds a universal macOS DMG, Windows x64 MSI/NSIS installers, and
+Linux x64 AppImage/.deb packages, then publishes them to GitHub Releases. The
+tag must match the version in `src-tauri/tauri.conf.json`; the workflow fails
+early if it does not.
+
+```bash
+# after bumping both package.json and src-tauri/tauri.conf.json
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The macOS job uses an ad-hoc signature (`APPLE_SIGNING_IDENTITY=-`), which is
+enough for local distribution but not notarization. Add Apple and Windows
+signing secrets before treating these as trusted production installers.
 
 The app icon is the open-orbit universe in `assets/icon.svg`. Regenerate every
 platform size after editing it:

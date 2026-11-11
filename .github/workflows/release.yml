@@ -1,0 +1,104 @@
+name: Release desktop builds
+
+on:
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    name: ${{ matrix.label }}
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macOS universal
+            platform: macos-latest
+            args: "--target universal-apple-darwin --bundles dmg"
+            signing_identity: "-"
+          - label: Linux x64
+            platform: ubuntu-22.04
+            args: "--bundles deb,appimage"
+            signing_identity: ""
+          - label: Windows x64
+            platform: windows-latest
+            args: "--bundles msi,nsis"
+            signing_identity: ""
+
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            xdg-utils
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Set up Rust and macOS targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Check release tag matches the app version
+        shell: bash
+        run: |
+          version="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match tauri.conf.json version $version"
+            exit 1
+          fi
+
+      - name: Build and publish
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_SIGNING_IDENTITY: ${{ matrix.signing_identity }}
+        with:
+          tagName: v__VERSION__
+          releaseName: "Free Domain Browser v__VERSION__"
+          releaseBody: |
+            Cross-platform desktop builds for Free Domain Browser __VERSION__.
+
+            - macOS: universal DMG (Apple Silicon + Intel)
+            - Windows: x64 MSI and NSIS installer
+            - Linux: x64 AppImage and Debian package
+
+            These builds are ad-hoc signed or unsigned and are not notarized.
+            macOS may require you to allow the app under System Settings → Privacy & Security
+            on first launch. Windows SmartScreen may ask for confirmation.
+
+            Source code: https://github.com/free-domain-name/tauri-browser
+            Registry: https://github.com/free-domain-name/registry
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

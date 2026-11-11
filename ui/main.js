@@ -447,13 +447,17 @@ function showUnavailable(outcome, tab = activeTab()) {
   els.modalIcon.textContent = "!";
   els.modalIcon.style.background = "var(--danger-soft)";
   els.modalIcon.style.color = "var(--danger)";
+  const freeNamespace = outcome.domain === "fdn" || outcome.domain.endsWith(".fdn");
   els.modalTitle.textContent = "Free Registry unreachable";
   els.modalBody.textContent =
     `${outcome.domain} could not be looked up in the GitHub registry. ` +
     `${outcome.message || "The registry request failed."} ` +
-    "Retry, or continue explicitly to the public web.";
+    (freeNamespace
+      ? "Public DNS cannot answer .fdn names, so retry when the registry is reachable."
+      : "Retry, or continue explicitly to the public web.");
   els.conflictChoices.hidden = true;
   els.unavailableActions.hidden = false;
+  els.fallbackPublic.hidden = freeNamespace;
   els.modal.hidden = false;
   els.address.value = displayFor(outcome);
   setStatus("unavailable");

@@ -62,6 +62,12 @@ https://raw.githubusercontent.com/free-domain-name/registry/main/t/e/s/t/test.xy
 }
 ```
 
+`target_url` is an **origin**, not a page URL:
+`http(s)://<ipv4 | [ipv6] | hostname>[:port]`. It has no credentials, path,
+query or fragment; the browser appends the request path and query. The full
+grammar, IP/hostname semantics and rejected forms live in
+[the registry docs](https://github.com/free-domain-name/registry/blob/main/docs/target-url.md).
+
 The shard path is the domain with dots removed, padded to four characters, split
 one character per directory. A short name pads with `_` (`a.co` →
 `a/c/o/_/a.co.json`). Four levels give 37⁴ buckets and keep directories small.
@@ -175,6 +181,30 @@ npm run android:build
 
 The webview loads `ui/` directly; there is no bundler or dev server.
 
+### Why `npm run dev` can rebuild everything
+
+Cargo reuses `src-tauri/target` as long as the **target directory, `CARGO_HOME`,
+toolchain, feature set and `RUSTFLAGS`** stay the same. A full dependency rebuild
+is the signature of one of those changing — most often `CARGO_TARGET_DIR` being
+set by an IDE or shell profile, or the target directory being deleted by a
+cleaner.
+
+`npm run dev` goes through `scripts/tauri.mjs`. It corrects an inherited
+`CARGO_TARGET_DIR` that points somewhere other than `src-tauri/target` and
+otherwise leaves Cargo's environment untouched. Do not delete
+`src-tauri/target`; a warm debug tree is several gigabytes and is what makes
+subsequent runs fast.
+
+If a run still compiles the world, print the effective paths:
+
+```bash
+npm run doctor
+```
+
+It shows the target directory, `CARGO_HOME`, `RUSTFLAGS`, incremental mode,
+cache size and the last debug binary. For verbose CLI output use
+`npm run dev:verbose`.
+
 ### Android notes
 
 - `http://fdn.<domain>` is intercepted by the Tauri webview client and never
@@ -199,8 +229,9 @@ The webview loads `ui/` directly; there is no bundler or dev server.
   responses so a destination can render inside the content view. This means a
   malicious destination loses those protections **inside this browser**; only
   visit names you trust.
-- `target_url` must be `http(s)` with no credentials; the registry validator
-  rejects wildcards, loops, and unknown fields.
+- `target_url` must be an `http(s)` origin with no credentials, path, query or
+  fragment; the browser validates this too. The registry validator rejects
+  wildcards, loops, paths and unknown fields.
 - HTTPS targets use `rustls` with normal certificate validation. There is no
   "ignore certificate errors" switch.
 - Cookies are passed through, but `Domain=` and `Secure` attributes are dropped

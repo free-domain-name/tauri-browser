@@ -5,8 +5,10 @@
   "description": "Cross-platform Tauri browser with free-domain registry resolution",
   "type": "module",
   "scripts": {
-    "dev": "tauri dev",
-    "build": "tauri build",
+    "dev": "node scripts/tauri.mjs dev",
+    "dev:verbose": "node scripts/tauri.mjs dev -v",
+    "build": "node scripts/tauri.mjs build",
+    "doctor": "node scripts/doctor.mjs",
     "android:init": "tauri android init",
     "android:dev": "tauri android dev",
     "android:build": "tauri android build --apk",

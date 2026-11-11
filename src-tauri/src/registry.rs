@@ -364,6 +364,16 @@ fn validate_record(record: &RegistryRecord, expected_domain: &str) -> AppResult<
             "target_url must not contain credentials".into(),
         ));
     }
+    if target.path() != "/" {
+        return Err(AppError::Registry(
+            "target_url must be an origin without a path".into(),
+        ));
+    }
+    if target.query().is_some() || target.fragment().is_some() {
+        return Err(AppError::Registry(
+            "target_url must not contain a query or fragment".into(),
+        ));
+    }
     Ok(())
 }
 
@@ -412,6 +422,34 @@ mod tests {
             "example.com"
         );
         assert!(normalize_domain("   ").is_err());
+    }
+
+    #[test]
+    fn rejects_non_origin_target_urls() {
+        for target_url in [
+            "http://192.0.2.1/app",
+            "http://192.0.2.1?x=1",
+            "http://192.0.2.1#top",
+        ] {
+            let record = RegistryRecord {
+                domain: "example.com".into(),
+                target_url: target_url.into(),
+                owner_github: "someone".into(),
+                ttl: 3600,
+            };
+            assert!(
+                validate_record(&record, "example.com").is_err(),
+                "{target_url} should be rejected"
+            );
+        }
+
+        let record = RegistryRecord {
+            domain: "example.com".into(),
+            target_url: "http://192.0.2.1:8080".into(),
+            owner_github: "someone".into(),
+            ttl: 3600,
+        };
+        assert!(validate_record(&record, "example.com").is_ok());
     }
 
     #[test]

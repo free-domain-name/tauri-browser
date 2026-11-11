@@ -582,6 +582,18 @@ kbd {
   font-size: 11px;
 }
 
+.hero-facts a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--faint) 55%, transparent);
+  text-underline-offset: 2px;
+}
+
+.hero-facts a:hover {
+  color: var(--text);
+  text-decoration-color: var(--accent);
+}
+
 .hero-preview {
   position: relative;
   min-width: 0;

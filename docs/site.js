@@ -211,5 +211,67 @@
     }
   }
 
+  // A small live count on the landing page. The registry has no index, so the
+  // tree is the cheapest public count; cache it per session and keep the static
+  // fallback if GitHub is unavailable or the tree is truncated.
+  const registryRepo = "free-domain-name/registry";
+  const registryCountKey = "fdn.registryCount.v1";
+  const registryCountMaxAge = 60 * 60 * 1000;
+
+  function setRegistryCount(count) {
+    if (!Number.isFinite(count) || count < 0) return;
+    const formatted = new Intl.NumberFormat().format(count);
+    for (const node of document.querySelectorAll("[data-registry-count]")) {
+      node.textContent = formatted;
+    }
+  }
+
+  async function loadRegistryCount() {
+    if (!document.querySelector("[data-registry-count]")) return;
+
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(registryCountKey) || "null");
+      if (
+        cached &&
+        typeof cached.count === "number" &&
+        Date.now() - cached.at < registryCountMaxAge
+      ) {
+        setRegistryCount(cached.count);
+        return;
+      }
+    } catch {
+      /* Storage is optional. */
+    }
+
+    try {
+      const response = await fetch(
+        `https://api.github.com/repos/${registryRepo}/git/trees/main?recursive=1`,
+        { headers: { Accept: "application/vnd.github+json" } },
+      );
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (data.truncated) return;
+
+      const recordPattern = /^[a-z0-9_]\/[a-z0-9_]\/[a-z0-9_]\/[a-z0-9_]\/[^/]+\.json$/i;
+      const count = (Array.isArray(data.tree) ? data.tree : []).filter(
+        (entry) => entry?.type === "blob" && recordPattern.test(entry.path),
+      ).length;
+
+      setRegistryCount(count);
+      try {
+        sessionStorage.setItem(
+          registryCountKey,
+          JSON.stringify({ at: Date.now(), count }),
+        );
+      } catch {
+        /* Storage is optional. */
+      }
+    } catch {
+      /* Keep the static fallback. */
+    }
+  }
+
+  loadRegistryCount();
   loadLatestRelease();
 })();

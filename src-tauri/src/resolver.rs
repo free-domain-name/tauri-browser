@@ -9,7 +9,14 @@
 //!    resolve through public DNS (case B),
 //! 2. a name present in both worlds produces a `Conflict` outcome so the UI can
 //!    ask the user (case A),
-//! 3. a name absent from the registry goes to the public web (case C).
+//! 3. a name absent from the registry but delegated in public DNS goes to the
+//!    public web (case C),
+//! 4. a name absent from both the registry and public DNS produces an
+//!    `Unregistered` outcome so the UI can offer to claim it (case D).
+//!
+//! Availability is inferred only from a definitive public-DNS NXDOMAIN. A
+//! timeout or an inconclusive answer must never turn a live domain into a
+//! claim page.
 
 use std::collections::HashMap;
 use std::sync::RwLock;
@@ -17,6 +24,9 @@ use std::time::Duration;
 
 use hickory_resolver::config::{ResolverConfig, GOOGLE};
 use hickory_resolver::net::runtime::TokioRuntimeProvider;
+use hickory_resolver::net::{DnsError, NetError};
+use hickory_resolver::proto::op::ResponseCode;
+use hickory_resolver::proto::rr::RecordType;
 use hickory_resolver::TokioResolver;
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -24,8 +34,9 @@ use url::Url;
 use crate::error::{AppError, AppResult};
 use crate::registry::{normalize_domain, RegistryClient};
 
-/// How long to wait for the public DNS conflict check. A timeout is treated as
-/// "does not resolve", so a slow resolver never blocks a registry navigation.
+/// How long to wait for the public DNS conflict or availability check. A
+/// timeout is inconclusive: it never makes a name available and never blocks a
+/// registry navigation.
 const DNS_CONFLICT_TIMEOUT: Duration = Duration::from_secs(3);
 
 /// Remembered per-session choice for a name that exists in both places.
@@ -34,6 +45,33 @@ const DNS_CONFLICT_TIMEOUT: Duration = Duration::from_secs(3);
 pub enum Choice {
     Registry,
     Public,
+}
+
+/// What public DNS says about a name. `Missing` is the only state that is safe
+/// to describe as available; an inconclusive lookup stays inconclusive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PublicDnsStatus {
+    Present,
+    Missing,
+    Unknown,
+}
+
+fn classify_public_dns(result: Result<usize, NetError>) -> PublicDnsStatus {
+    match result {
+        Ok(count) if count > 0 => PublicDnsStatus::Present,
+        // NODATA means the name exists but has no NS records at this label.
+        // It is not evidence that the name can be claimed.
+        Ok(_) => PublicDnsStatus::Unknown,
+        Err(NetError::Dns(DnsError::ResponseCode(ResponseCode::NXDomain))) => {
+            PublicDnsStatus::Missing
+        }
+        Err(NetError::Dns(DnsError::NoRecordsFound(no_records)))
+            if no_records.response_code == ResponseCode::NXDomain =>
+        {
+            PublicDnsStatus::Missing
+        }
+        Err(_) => PublicDnsStatus::Unknown,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -329,7 +367,17 @@ impl Navigator {
         };
 
         let Some(record) = record else {
-            if is_free_namespace(&parsed.domain) {
+            let available = if is_free_namespace(&parsed.domain) {
+                true
+            } else {
+                self.public_dns_status(&parsed.domain).await == PublicDnsStatus::Missing
+            };
+            if available {
+                let message = if is_free_namespace(&parsed.domain) {
+                    "This name is not registered in the Free Domain Registry yet."
+                } else {
+                    "This name is not registered in the Free Domain Registry, and public DNS has no delegation for it. You can claim it here."
+                };
                 return Ok(NavigationOutcome {
                     kind: OutcomeKind::Unregistered,
                     domain: parsed.domain.clone(),
@@ -339,9 +387,7 @@ impl Navigator {
                     registry_url: None,
                     public_url: Some(public_url),
                     registry_target: None,
-                    message: Some(
-                        "This name is not registered in the Free Domain Registry yet.".into(),
-                    ),
+                    message: Some(message.into()),
                 });
             }
             return Ok(NavigationOutcome::navigate(
@@ -380,7 +426,7 @@ impl Navigator {
             });
         }
 
-        if self.resolves_publicly(&parsed.domain).await {
+        if self.public_dns_status(&parsed.domain).await == PublicDnsStatus::Present {
             return Ok(NavigationOutcome {
                 kind: OutcomeKind::Conflict,
                 domain: parsed.domain,
@@ -411,23 +457,39 @@ impl Navigator {
         })
     }
 
-    async fn resolves_publicly(&self, domain: &str) -> bool {
+    /// Ask public DNS whether a name is delegated. NS records are used instead
+    /// of A/AAAA because a registered domain may have no web server, and a
+    /// missing A record must not turn a live domain into a claim page.
+    async fn public_dns_status(&self, domain: &str) -> PublicDnsStatus {
         let Some(resolver) = &self.dns else {
-            return false;
+            return PublicDnsStatus::Unknown;
         };
-        match tokio::time::timeout(DNS_CONFLICT_TIMEOUT, resolver.lookup_ip(domain)).await {
-            Ok(Ok(lookup)) => lookup.iter().next().is_some(),
-            // NXDOMAIN is the normal answer for registry-only names, so it is
-            // not logged. Timeouts are also treated as "does not resolve" so a
-            // slow resolver never blocks a registry navigation.
-            Ok(Err(_)) | Err(_) => false,
+        let result = tokio::time::timeout(
+            DNS_CONFLICT_TIMEOUT,
+            resolver.lookup(domain, RecordType::NS),
+        )
+        .await;
+        match result {
+            Ok(Ok(lookup)) => classify_public_dns(Ok(lookup.answers().len())),
+            Ok(Err(error)) => classify_public_dns(Err(error)),
+            // A timeout must never be read as "available".
+            Err(_) => classify_public_dns(Err(NetError::Timeout)),
         }
+    }
+
+    /// Backwards-compatible name used by the live DNS test.
+    #[cfg(test)]
+    async fn resolves_publicly(&self, domain: &str) -> bool {
+        self.public_dns_status(domain).await == PublicDnsStatus::Present
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use hickory_resolver::net::NoRecords;
+    use hickory_resolver::proto::op::Query;
+    use hickory_resolver::proto::rr::Name;
 
     #[test]
     fn parses_bare_domains() {
@@ -491,12 +553,75 @@ mod tests {
     }
 
     #[test]
+    fn only_a_definitive_nxdomain_marks_a_name_available() {
+        let query = || {
+            Query::query(
+                Name::from_ascii("missing.example").expect("name"),
+                RecordType::NS,
+            )
+        };
+
+        assert_eq!(classify_public_dns(Ok(2)), PublicDnsStatus::Present);
+        assert_eq!(classify_public_dns(Ok(0)), PublicDnsStatus::Unknown);
+        assert_eq!(
+            classify_public_dns(Err(NetError::Timeout)),
+            PublicDnsStatus::Unknown
+        );
+        assert_eq!(
+            classify_public_dns(Err(NetError::Dns(DnsError::NoRecordsFound(
+                NoRecords::new(query(), ResponseCode::NoError)
+            )))),
+            PublicDnsStatus::Unknown
+        );
+        assert_eq!(
+            classify_public_dns(Err(NetError::Dns(DnsError::NoRecordsFound(
+                NoRecords::new(query(), ResponseCode::NXDomain)
+            )))),
+            PublicDnsStatus::Missing
+        );
+    }
+
+    #[test]
     fn recognises_the_free_namespace() {
         assert!(is_free_namespace("fdn"));
         assert!(is_free_namespace("hello.fdn"));
         assert!(is_free_namespace("denem111e.fdn"));
         assert!(!is_free_namespace("example.com"));
         assert!(!is_free_namespace("fdn.example.com"));
+    }
+
+    #[tokio::test]
+    #[ignore = "network: reads the live GitHub registry and public DNS"]
+    async fn live_unregistered_public_name_is_available() {
+        let dir = std::env::temp_dir().join(format!(
+            "fdn-unregistered-public-test-{}",
+            std::process::id()
+        ));
+        let registry = RegistryClient::new(dir.clone()).expect("cache dir");
+        let navigator = Navigator::new().expect("navigator");
+        let outcome = navigator
+            .resolve(&registry, "https://fvdfvdfvdfvdfvfv111.com/")
+            .await
+            .expect("resolve");
+        assert_eq!(outcome.kind, OutcomeKind::Unregistered);
+        assert_eq!(outcome.domain, "fvdfvdfvdfvdfvfv111.com");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    #[ignore = "network: reads the live GitHub registry and public DNS"]
+    async fn live_registered_public_name_stays_public() {
+        let dir =
+            std::env::temp_dir().join(format!("fdn-registered-public-test-{}", std::process::id()));
+        let registry = RegistryClient::new(dir.clone()).expect("cache dir");
+        let navigator = Navigator::new().expect("navigator");
+        let outcome = navigator
+            .resolve(&registry, "https://iana.org/")
+            .await
+            .expect("resolve");
+        assert_eq!(outcome.kind, OutcomeKind::Navigate);
+        assert_eq!(outcome.source, Source::PublicIcann);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[tokio::test]

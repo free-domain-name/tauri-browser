@@ -11,7 +11,7 @@
  * renders the plan it receives:
  *
  *   navigate     -> load `url` in the tab's iframe
- *   unregistered -> show the claim page for a free .fdn name
+ *   unregistered -> show the claim page for a name absent everywhere
  *   conflict     -> ask the user, then call choose_resolution
  *   unavailable  -> offer a retry or an explicit public-web fallback
  */
@@ -46,7 +46,9 @@ const els = {
   newTab: $("#newTab"),
   start: $("#start"),
   claim: $("#claim"),
+  claimBadge: $("#claimBadge"),
   claimDomain: $("#claimDomain"),
+  claimMessage: $("#claimMessage"),
   claimPath: $("#claimPath"),
   claimJson: $("#claimJson"),
   claimRegister: $("#claimRegister"),
@@ -683,8 +685,13 @@ function claimUrl(domain) {
 function fillClaim(entry) {
   const domain = entry.domain;
   const path = shardPath(domain);
+  const freeNamespace = domain === "fdn" || domain.endsWith(".fdn");
   claimTarget = { domain, registerUrl: claimUrl(domain), repoUrl: REGISTRY_REPO };
   els.claimDomain.textContent = domain;
+  els.claimBadge.textContent = freeNamespace ? "Available" : "Unregistered";
+  els.claimMessage.textContent = freeNamespace
+    ? "Nobody has claimed this name in the Free Domain Registry. Claiming it is a pull request; after it merges, every Free Domain Browser can open it."
+    : "This name is not active on the public internet, and nobody has claimed it in the Free Domain Registry. Registering it here maps it to a server you control. It does not buy the ICANN domain. If the public name becomes active later, the browser will ask visitors which destination to use.";
   els.claimPath.textContent = path;
   els.claimJson.textContent = JSON.stringify(claimRecord(domain), null, 2);
 }

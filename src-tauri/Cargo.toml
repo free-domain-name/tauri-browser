@@ -7,7 +7,7 @@ edition = "2021"
 rust-version = "1.82"
 license = "GPL-3.0-only"
 repository = "https://github.com/free-domain-name/tauri-browser"
-homepage = "https://github.com/free-domain-name/tauri-browser"
+homepage = "https://free-domain-name.github.io/tauri-browser/"
 default-run = "free-domain-browser"
 
 [lib]

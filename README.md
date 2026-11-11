@@ -34,10 +34,10 @@ address bar
     ▼
 parse input ──► registry lookup (memory → disk → raw.githubusercontent.com)
     │                         │
-    │                         ├── no record ──► .fdn name ──► CLAIM PAGE
-    │                         │                └── other ────► public https://
+    │                         ├── no record ──► .fdn or public NXDOMAIN ──► CLAIM PAGE
+    │                         │                └── delegated public name ───► public https://
     │                         │
-    │                         └── record ──► does public DNS resolve?
+    │                         └── record ──► is public DNS delegated?
     │                                           │
     │                                           ├── yes ──► CONFLICT MODAL
     │                                           │             ├── registry → fdn://
@@ -54,7 +54,7 @@ or GitHub requests itself. Plans are one of:
 | `kind`        | Meaning                                                        |
 | ------------- | -------------------------------------------------------------- |
 | `navigate`    | Load `url`; `source` is `github_registry` or `public_icann`.   |
-| `unregistered`| A `.fdn` name is absent from the registry. Show the claim page.|
+| `unregistered`| A name is absent from the registry and public DNS (or is any `.fdn` miss). Show the claim page.|
 | `conflict`    | Both exist. Show the modal and call `choose_resolution`.       |
 | `unavailable` | GitHub could not be read. Retry, or opt into the public web.   |
 | `error`       | Invalid input (for example a `javascript:` URL).               |
@@ -132,15 +132,28 @@ Tauri maps the workaround URL and reverts it before calling
 
 Public fallback pages are loaded over normal `https://` and are not proxied.
 
-### Available `.fdn` names
+### Available names
 
-`.fdn` is the registry's own namespace. If a `.fdn` name has no record, the
-browser does **not** try public DNS: it shows an **Available** claim page with the
-exact shard path, an IP-first JSON template, and buttons to open the registry's
-GitHub "new file" flow with that JSON prefilled. After the pull request merges, the re-check button clears the
-negative cache and resolves the name normally. A name in both the registry and
-public DNS still shows the conflict modal; the claim page is only for registry
-misses.
+The registry is not limited to `.fdn`; it can hold a record for **any** hostname,
+including names under standard TLDs. The browser only offers the claim page when
+the name is genuinely absent:
+
+- A `.fdn` miss is always available: `.fdn` is the registry's own namespace, so
+  public DNS is not consulted.
+- For every other name, the browser asks public DNS for NS records. A definitive
+  **NXDOMAIN** means the name is not delegated and can be claimed. A delegated
+  name falls through to the public web, and a timeout or inconclusive answer is
+  never treated as available.
+
+The claim page works for any hostname and shows the exact shard path, an IP-first
+JSON template, and buttons to open the registry's GitHub "new file" flow with
+that JSON prefilled. After the pull request merges, the re-check button clears
+the negative cache and resolves the name normally.
+
+Claiming a public-TLD name creates a **Free Domain Registry mapping**; it does
+not buy the ICANN registration. If that public domain becomes active later, the
+browser shows visitors the conflict chooser. A name in both the registry and
+public DNS also shows the conflict modal.
 
 ## Project layout
 
@@ -341,10 +354,10 @@ cache size and the last debug binary. For verbose CLI output use
 cd src-tauri && cargo test --lib
 ```
 
-21 tests cover shard-path derivation (Rust and Node must agree), input parsing,
-the unregistered `.fdn` branch, URL rewriting, cookie sanitization, the bridge
-and error-page escaping. Three `#[ignore]` live tests check the real registry
-and DNS:
+The unit tests cover shard-path derivation (Rust and Node must agree), input
+parsing, the unregistered-name branch, URL rewriting, cookie sanitization, the
+bridge and error-page escaping. The `#[ignore]` live tests check the real registry
+and DNS, including an unregistered public `.com` and a registered public name:
 
 ```bash
 cd src-tauri && cargo test --lib -- --ignored

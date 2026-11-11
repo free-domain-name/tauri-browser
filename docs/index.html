@@ -8,7 +8,7 @@
     <title>Free Domain Browser — one address bar, two name systems</title>
     <meta
       name="description"
-      content="A small, open-source browser that checks the community Free Domain Name registry before public DNS, asks you when a name exists in both, and lets you claim free .fdn names."
+      content="A small, open-source browser that checks the community Free Domain Name registry before public DNS, asks you when a name exists in both, and lets you claim any name that public DNS does not know."
     />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#080b12" />
@@ -198,7 +198,7 @@
         <div class="wrap proof-grid">
           <div><strong>Registry first</strong><span>Community names resolve without ICANN.</span></div>
           <div><strong>Conflict aware</strong><span>Two answers? You choose, not the browser.</span></div>
-          <div><strong>Free .fdn names</strong><span>Claim a missing name with a prefilled JSON PR.</span></div>
+          <div><strong>Any unclaimed name</strong><span>Claim a name with a prefilled JSON PR.</span></div>
           <div><strong>GPLv3</strong><span>Small, readable and open source.</span></div>
         </div>
       </section>
@@ -253,10 +253,11 @@
               <span class="feature-icon" aria-hidden="true">
                 <svg viewBox="0 0 24 24"><path d="M5 4h9l5 5v11H5z" /><path d="M14 4v5h5M8 13h8M8 17h5" /></svg>
               </span>
-              <h3>Free .fdn names</h3>
+              <h3>Names beyond .fdn</h3>
               <p>
-                A missing <code>.fdn</code> name gets a claim page with the exact shard path and
-                an IP-first JSON template. Open the registry pull request, merge, then re-check.
+                The registry accepts any hostname. A name with no registry record and no public
+                DNS delegation gets a claim page with the exact shard path and an IP-first JSON
+                template. Open the pull request, merge, then re-check.
               </p>
             </article>
           </div>
@@ -297,8 +298,9 @@
               <span class="step-number">03</span>
               <h3>Check public DNS</h3>
               <p>
-                If a registry record exists, public DNS is checked as well. That is how the
-                browser can show an honest conflict instead of silently preferring one side.
+                NS records show whether a public name is delegated. They reveal an honest
+                conflict when a registry record exists, and a definitive NXDOMAIN is what makes
+                a missing public name claimable.
               </p>
             </li>
             <li class="flow-step">
@@ -324,8 +326,8 @@
               </div>
               <div class="outcome public-outcome">
                 <span class="tag public"><span class="tag-dot"></span>Public</span>
-                <strong>No registry record</strong>
-                <p>Loads the ordinary <code>https://</code> destination for a non-.fdn name.</p>
+                <strong>Public name, no registry record</strong>
+                <p>Loads the ordinary <code>https://</code> destination when public DNS is delegated. Unregistered names go to the claim page instead.</p>
               </div>
               <div class="outcome conflict-outcome">
                 <span class="tag conflict"><span class="tag-dot"></span>Conflict</span>
@@ -334,8 +336,8 @@
               </div>
               <div class="outcome available-outcome">
                 <span class="tag available"><span class="tag-dot"></span>Available</span>
-                <strong>.fdn miss</strong>
-                <p>The claim page opens with the exact path and a prefilled registry JSON template.</p>
+                <strong>Unregistered</strong>
+                <p>A missing <code>.fdn</code> name, or any other name with a public NXDOMAIN. The claim page has the exact path and a prefilled JSON template.</p>
               </div>
             </div>
           </div>
@@ -343,8 +345,9 @@
           <div class="callout">
             <span class="callout-mark" aria-hidden="true">!</span>
             <p>
-              <strong>.fdn misses never fall through to public DNS.</strong> They are offered for
-              claim instead. A name that exists in both systems still gets the conflict chooser.
+              <strong>Only genuinely unregistered names are offered for claim.</strong> That means
+              every missing <code>.fdn</code> name, plus other names that return a definitive public
+              NXDOMAIN. Registered public names and inconclusive DNS answers still go to the public web.
             </p>
           </div>
         </div>
@@ -382,8 +385,8 @@
                 <div>
                   <h3>Type a name</h3>
                   <p>
-                    Try <code>hello.fdn</code>, a normal domain, or a full URL. The address bar
-                    accepts a host, port and path; press <kbd>Enter</kbd>.
+                    Try <code>hello.fdn</code>, a normal domain, or a made-up name that does not
+                    resolve. The address bar accepts a host, port and path; press <kbd>Enter</kbd>.
                   </p>
                 </div>
               </li>
@@ -405,9 +408,9 @@
                 <div>
                   <h3>Choose a conflict or claim a name</h3>
                   <p>
-                    When both systems answer, pick a destination once. When a
-                    <code>.fdn</code> name is missing, follow the claim page to the registry
-                    pull request, then use the re-check button.
+                    When both systems answer, pick a destination once. When a name is missing
+                    from the registry and public DNS, follow the claim page to the registry pull
+                    request, then use the re-check button.
                   </p>
                 </div>
               </li>
@@ -929,11 +932,12 @@ npm run dev</code></pre>
               </p>
             </details>
             <details>
-              <summary>How do I claim a free .fdn name?</summary>
+              <summary>How do I claim a name?</summary>
               <p>
-                Type the name. If the registry has no record, the claim page shows the exact
-                shard path and an IP-first JSON template, with a button that opens the registry's
-                prefilled “new file” flow. Merge the pull request, then use re-check.
+                Type it. A missing <code>.fdn</code> name, or any other name that public DNS
+                returns NXDOMAIN for, opens a claim page with the exact shard path and an IP-first
+                JSON template. The registry accepts any hostname. Merge the pull request, then use
+                re-check. This creates a registry mapping, not an ICANN registration.
               </p>
             </details>
             <details>

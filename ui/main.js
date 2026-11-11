@@ -36,6 +36,11 @@ const els = {
   settingsMenu: $("#settingsMenu"),
   settingsClose: $("#settingsClose"),
   settingsReset: $("#settingsReset"),
+  skinSelect: $("#skinSelect"),
+  skinHint: $("#skinHint"),
+  skinCss: $("#skinCss"),
+  applyCss: $("#applyCss"),
+  clearCss: $("#clearCss"),
   frames: $("#frames"),
   tabs: $("#tabs"),
   newTab: $("#newTab"),
@@ -68,6 +73,34 @@ const els = {
 };
 
 const REGISTRY_REPO = "https://github.com/free-domain-name/registry";
+
+const SKIN_META = {
+  default: { label: "Default", hint: "The original clean chrome." },
+  "high-tech": {
+    label: "High-Tech",
+    hint: "Graphite panels, cyan instruments and a squared-off HUD.",
+  },
+  futuristic: {
+    label: "Futuristic",
+    hint: "Violet glass, neon edges and a soft nebula start page.",
+  },
+  historic: {
+    label: "Historic",
+    hint: "Parchment, sepia ink and an old-style serif.",
+  },
+  victorian: {
+    label: "Victorian",
+    hint: "Dusty rose, oxblood rules and gold botanical ornament.",
+  },
+  amazon: {
+    label: "Amazon",
+    hint: "Rainforest greens, clay and river-blue accents.",
+  },
+  terminal: {
+    label: "Terminal",
+    hint: "Phosphor CRT, monospace type and subtle scanlines.",
+  },
+};
 
 const LABELS = {
   github_registry: "GitHub Free Registry",
@@ -135,7 +168,12 @@ function focusAddress() {
 /* -------------------------------------------------------------- settings */
 
 function renderSettings() {
-  const current = appearance?.get() ?? { theme: "system", density: "comfortable" };
+  const current = appearance?.get() ?? {
+    theme: "system",
+    density: "comfortable",
+    skin: "default",
+    customCss: "",
+  };
   for (const choice of els.settingsMenu.querySelectorAll("[data-theme-choice]")) {
     choice.setAttribute(
       "aria-checked",
@@ -147,6 +185,14 @@ function renderSettings() {
       "aria-checked",
       String(choice.dataset.densityChoice === current.density),
     );
+  }
+  els.skinSelect.value = current.skin;
+  const skinHint = SKIN_META[current.skin]?.hint ?? SKIN_META.default.hint;
+  els.skinHint.textContent = current.customCss.trim()
+    ? `${skinHint} Custom CSS is active.`
+    : skinHint;
+  if (document.activeElement !== els.skinCss) {
+    els.skinCss.value = current.customCss;
   }
 }
 
@@ -774,10 +820,46 @@ function bind() {
     }
   });
 
+  els.skinSelect.addEventListener("change", () => {
+    if (!appearance) return;
+    const skin = els.skinSelect.value;
+    appearance.setSkin(skin);
+    renderSettings();
+    toast(`Skin: ${SKIN_META[skin]?.label ?? SKIN_META.default.label}`);
+  });
+
+  els.applyCss.addEventListener("click", () => {
+    if (!appearance) return;
+    const css = els.skinCss.value;
+    appearance.setCustomCss(css);
+    renderSettings();
+    toast(css.trim() ? "Custom CSS applied." : "Custom CSS cleared.");
+  });
+
+  els.clearCss.addEventListener("click", () => {
+    if (!appearance) return;
+    els.skinCss.value = "";
+    appearance.setCustomCss("");
+    renderSettings();
+    toast("Custom CSS cleared.");
+  });
+
+  els.skinCss.addEventListener("keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+      event.preventDefault();
+      els.applyCss.click();
+    }
+  });
+
   els.settingsReset.addEventListener("click", () => {
     if (!appearance) return;
+    const current = appearance.get();
+    const custom = current.skin !== "default" || current.customCss;
+    if (custom && !window.confirm("Reset theme, layout, skin and custom CSS?")) return;
     appearance.setTheme("system");
     appearance.setDensity("comfortable");
+    appearance.setSkin("default");
+    appearance.setCustomCss("");
     renderSettings();
     toast("Appearance reset.");
   });

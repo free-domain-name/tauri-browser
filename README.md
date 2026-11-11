@@ -136,7 +136,8 @@ misses.
 ```text
 assets/icon.svg          app icon source (open-orbit universe)
 ui/                      browser chrome (tabs, address bar, history, claim, modal)
-ui/appearance.js         theme + compact-layout bootstrap (before first paint)
+ui/appearance.js         theme + density + skin bootstrap (before first paint)
+ui/skins.css             seven built-in chrome palettes and textures
 src-tauri/
   Cargo.toml
   tauri.conf.json
@@ -176,10 +177,48 @@ The gear (or `Ctrl/Cmd+,`) opens **Appearance**:
 - **Theme** — System (follows the desktop), Light, or Dark.
 - **Layout** — Comfortable or Compact. Compact tightens tabs, toolbar, start
   page and claim page without shrinking the page content itself.
+- **Skin** — Default plus six built-in looks: High-Tech, Futuristic, Historic,
+  Victorian, Amazon and Terminal. Every skin has a light and dark palette, so
+  the theme choice still works underneath it.
+- **Write your own CSS** — a local CSS editor that applies after the selected
+  skin. It can restyle the chrome, tabs, start page and settings panel; page
+  content inside the iframe is isolated and unaffected.
 
-Both choices are stored in `localStorage` for this device and applied before the
-first paint, so a dark theme does not flash light. The menu also has a reset to
-System + Comfortable.
+All appearance choices are stored in `localStorage` for this device and applied
+before the first paint, so a dark theme does not flash light. The menu also has a
+reset that clears the theme, density, skin and custom CSS.
+
+### Custom skin CSS
+
+Open **Appearance → Write your own CSS**, paste CSS, then press **Apply CSS**
+(or `Ctrl/Cmd+Enter`). The editor accepts up to 24,000 characters. It can use the
+chrome's CSS tokens:
+
+```css
+:root {
+  --accent: #ff5c8a;
+  --accent-soft: rgba(255, 92, 138, 0.14);
+  --on-accent: #170811;
+  --radius: 2px;
+}
+
+.toolbar {
+  background: #171018;
+}
+
+.start h1 {
+  font-family: Impact, "Arial Black", sans-serif;
+  text-transform: uppercase;
+}
+```
+
+Useful selectors are `.toolbar`, `.tabstrip`, `.tab`, `.omnibox`, `.pill`,
+`.start`, `.sample` and `.settings-menu`. The main tokens are `--bg`, `--surface`,
+`--surface-2`, `--text`, `--muted`, `--accent`, `--accent-soft`, `--on-accent`,
+`--radius`, `--sans` and `--mono`. It is applied after the built-in skin and
+wins over the skin's tokens, including its dark palette. Custom CSS is stored
+with the other appearance settings and is only interpreted by this device's
+local chrome.
 
 ## Build
 

@@ -9,6 +9,8 @@
     <meta name="theme-color" content="#f3f4f7" />
     <title>Free Domain Browser</title>
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="skins.css" />
+    <style id="customSkin"></style>
     <script src="appearance.js"></script>
   </head>
   <body>
@@ -181,12 +183,52 @@
                 </div>
               </fieldset>
 
+              <fieldset class="settings-field">
+                <legend class="settings-legend">Skin</legend>
+                <div class="skin-row">
+                  <select id="skinSelect" class="skin-select" aria-label="Skin">
+                    <option value="default">Default — current look</option>
+                    <option value="high-tech">High-Tech — graphite HUD</option>
+                    <option value="futuristic">Futuristic — neon glass</option>
+                    <option value="historic">Historic — parchment &amp; ink</option>
+                    <option value="victorian">Victorian — rose &amp; gold</option>
+                    <option value="amazon">Amazon — rainforest</option>
+                    <option value="terminal">Terminal — CRT phosphor</option>
+                  </select>
+                  <svg class="skin-chevron" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M6 9l6 6 6-6" />
+                  </svg>
+                </div>
+                <p id="skinHint" class="skin-hint">The original clean chrome.</p>
+              </fieldset>
+
+              <details class="custom-skin">
+                <summary>Write your own CSS</summary>
+                <p class="custom-help">
+                  Applied after the skin, to the browser chrome only. Page content stays
+                  isolated in its own frame.
+                </p>
+                <textarea
+                  id="skinCss"
+                  class="custom-css"
+                  rows="5"
+                  maxlength="24000"
+                  spellcheck="false"
+                  placeholder=":root { --accent: #ff5c8a; --radius: 2px; }"
+                  aria-label="Custom CSS for the browser chrome"
+                ></textarea>
+                <div class="custom-actions">
+                  <button id="applyCss" class="skin-button" type="button">Apply CSS</button>
+                  <button id="clearCss" class="settings-reset" type="button">Clear</button>
+                </div>
+              </details>
+
               <p class="settings-hint">
-                System follows your desktop appearance. Compact tightens the tabs, toolbar
-                and start page without shrinking page content.
+                System follows your desktop appearance. Skins restyle the chrome, tabs and
+                start page; Compact tightens them without shrinking page content.
               </p>
               <button id="settingsReset" class="settings-reset" type="button">
-                Reset to system &amp; comfortable
+                Reset appearance
               </button>
             </section>
           </div>

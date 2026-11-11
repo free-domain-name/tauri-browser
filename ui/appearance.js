@@ -14,8 +14,18 @@
   const systemDark = window.matchMedia?.("(prefers-color-scheme: dark)");
   const themes = new Set(["system", "light", "dark"]);
   const densities = new Set(["comfortable", "compact"]);
+  const skins = new Set([
+    "default",
+    "high-tech",
+    "futuristic",
+    "historic",
+    "victorian",
+    "amazon",
+    "terminal",
+  ]);
+  const MAX_CSS = 24000;
 
-  const defaults = { theme: "system", density: "comfortable" };
+  const defaults = { theme: "system", density: "comfortable", skin: "default", customCss: "" };
 
   function read() {
     try {
@@ -23,6 +33,11 @@
       return {
         theme: themes.has(saved?.theme) ? saved.theme : defaults.theme,
         density: densities.has(saved?.density) ? saved.density : defaults.density,
+        skin: skins.has(saved?.skin) ? saved.skin : defaults.skin,
+        customCss:
+          typeof saved?.customCss === "string"
+            ? saved.customCss.slice(0, MAX_CSS)
+            : defaults.customCss,
       };
     } catch {
       return { ...defaults };
@@ -40,7 +55,11 @@
     const theme = resolvedTheme();
     root.dataset.theme = theme;
     root.dataset.density = settings.density;
+    root.dataset.skin = settings.skin;
     root.style.colorScheme = theme;
+
+    const customStyle = document.querySelector("#customSkin");
+    if (customStyle) customStyle.textContent = settings.customCss;
 
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
@@ -93,6 +112,12 @@
     },
     setDensity(density) {
       if (densities.has(density)) update({ density });
+    },
+    setSkin(skin) {
+      if (skins.has(skin)) update({ skin });
+    },
+    setCustomCss(css) {
+      update({ customCss: typeof css === "string" ? css.slice(0, MAX_CSS) : "" });
     },
   };
 })();

@@ -1,48 +1,26 @@
 <!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Copyright (C) 2026 Free Domain Name contributors -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
+    <title>Free Domain Browser icon</title>
     <style>
       html,
       body {
-        width: 1024px;
-        height: 1024px;
-        margin: 0;
-        overflow: hidden;
-      }
-      body {
         display: grid;
         place-items: center;
-        background: linear-gradient(145deg, #4338ca 0%, #4f46e5 42%, #0d9488 100%);
+        min-height: 100%;
+        margin: 0;
+        background: #11131a;
       }
-      .halo {
-        position: absolute;
-        width: 760px;
-        height: 760px;
-        border-radius: 50%;
-        background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.24), transparent 62%);
-      }
-      svg {
-        position: relative;
-        width: 560px;
-        height: 560px;
-        fill: none;
-        stroke: #ffffff;
-        stroke-width: 16;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        filter: drop-shadow(0 18px 34px rgba(0, 0, 0, 0.22));
+      img {
+        width: min(80vmin, 1024px);
+        height: auto;
       }
     </style>
   </head>
   <body>
-    <div class="halo"></div>
-    <svg viewBox="0 0 64 64" aria-hidden="true">
-      <circle cx="32" cy="32" r="23" />
-      <path d="M9 32h46" />
-      <path d="M32 9c7 6.5 10.5 14.2 10.5 23S39 48.5 32 55c-7-6.5-10.5-14.2-10.5-23S25 15.5 32 9z" />
-      <circle cx="43" cy="21" r="4.5" fill="#ffffff" stroke="none" />
-      <circle cx="43" cy="21" r="8.5" stroke="rgba(255,255,255,0.5)" stroke-width="3" />
-    </svg>
+    <img src="icon.svg" alt="Free Domain Browser app icon" />
   </body>
 </html>

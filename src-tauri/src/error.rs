@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Free Domain Name contributors
+
 use serde::ser::{Serialize, Serializer};
 
 /// Errors surfaced to the frontend as a single human-readable string.

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Free Domain Name contributors
+
 //! Sharded, on-demand reader for the Free Domain Name registry.
 //!
 //! The registry is a GitHub repository where every name is one JSON file at a

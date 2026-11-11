@@ -1,5 +1,9 @@
 # Free Domain Browser
 
+<p align="center">
+  <img src="assets/icon.png" width="128" alt="Free Domain Browser icon: an open orbit around a teal planet" />
+</p>
+
 A small cross-platform browser (desktop + Android) that resolves **any** name
 through the community [Free Domain Name registry](https://github.com/free-domain-name/registry)
 first, then falls back to public ICANN DNS. When a name exists in both places, it
@@ -9,7 +13,7 @@ session.
 Built with Tauri v2 (Rust + system webview) and a vanilla HTML/CSS/JS chrome.
 Tabs, the address bar, history and the resolution status all live in the chrome;
 each tab owns its own iframe so switching tabs keeps the page and its form state
-alive.
+alive. The chrome is GPLv3, open source, and has light/dark and compact layouts.
 
 ## How resolution works
 
@@ -130,7 +134,9 @@ misses.
 ## Project layout
 
 ```text
+assets/icon.svg          app icon source (open-orbit universe)
 ui/                      browser chrome (tabs, address bar, history, claim, modal)
+ui/appearance.js         theme + compact-layout bootstrap (before first paint)
 src-tauri/
   Cargo.toml
   tauri.conf.json
@@ -165,6 +171,16 @@ focuses the address bar, `Ctrl/Cmd+R` reloads, `Ctrl+Tab` cycles tabs, and
 `Alt+Left`/`Alt+Right` walk the tab's own history. Middle-clicking a tab closes
 it. Tabs are intentionally in-memory; a restart starts with one new tab.
 
+The gear (or `Ctrl/Cmd+,`) opens **Appearance**:
+
+- **Theme** — System (follows the desktop), Light, or Dark.
+- **Layout** — Comfortable or Compact. Compact tightens tabs, toolbar, start
+  page and claim page without shrinking the page content itself.
+
+Both choices are stored in `localStorage` for this device and applied before the
+first paint, so a dark theme does not flash light. The menu also has a reset to
+System + Comfortable.
+
 ## Build
 
 Prerequisites: Rust 1.82+, Node 18+, the platform's Tauri system dependencies,
@@ -180,6 +196,13 @@ npm run android:build
 ```
 
 The webview loads `ui/` directly; there is no bundler or dev server.
+
+The app icon is the open-orbit universe in `assets/icon.svg`. Regenerate every
+platform size after editing it:
+
+```bash
+npm run icon
+```
 
 ### Why `npm run dev` can rebuild everything
 
@@ -267,7 +290,7 @@ cache size and the last debug binary. For verbose CLI output use
 cd src-tauri && cargo test --lib
 ```
 
-20 tests cover shard-path derivation (Rust and Node must agree), input parsing,
+21 tests cover shard-path derivation (Rust and Node must agree), input parsing,
 the unregistered `.fdn` branch, URL rewriting, cookie sanitization, the bridge
 and error-page escaping. Three `#[ignore]` live tests check the real registry
 and DNS:
@@ -284,4 +307,22 @@ cd /path/to/registry && node scripts/validate.mjs
 
 ## License
 
-GPL-3.0-only. See [LICENSE](LICENSE).
+Free Domain Browser is **GPL-3.0-only**. The full text is in [LICENSE](LICENSE).
+The registry, browser and their scripts are distributed under the same license;
+the app metadata (`Cargo.toml`, `package.json`, Tauri bundle settings) declares
+it as well.
+
+### Is GPLv3 compatible with Tauri?
+
+Yes. Tauri is dual-licensed **MIT OR Apache-2.0**. Both are permissive and
+GPLv3-compatible, so this application can be GPLv3 and redistribute Tauri inside
+it. Tauri's own source stays under its license; the combined application is
+distributed under GPLv3. The remaining Rust and npm dependencies are permissive
+(MIT, Apache-2.0, BSD, ISC, MPL-2.0, CDLA-Permissive-2.0); MPL-2.0 is
+GPLv3-compatible. Keep the upstream copyright and license notices when shipping
+binaries.
+
+GPLv3 requires providing the corresponding source for binaries you distribute.
+Publishing releases from this repository satisfies that. Direct distribution
+(GitHub Releases, F-Droid, etc.) is fine; Apple's App Store adds DRM and terms
+that may conflict with GPLv3, so review that before an iOS/Mac App Store release.

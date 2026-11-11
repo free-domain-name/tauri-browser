@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* Copyright (C) 2026 Free Domain Name contributors */
 /**
  * Print the facts that determine whether Cargo reuses the build cache.
  * Run this if `npm run dev` recompiles dependencies instead of taking ~1s.

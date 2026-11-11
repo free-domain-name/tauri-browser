@@ -1,3 +1,6 @@
+/* SPDX-License-Identifier: GPL-3.0-only */
+/* Copyright (C) 2026 Free Domain Name contributors */
+
 /* global window, document, requestAnimationFrame */
 
 /**
@@ -15,6 +18,7 @@
 
 const tauri = window.__TAURI__;
 const invoke = tauri?.core?.invoke;
+const appearance = window.FDN_APPEARANCE;
 
 const $ = (selector) => document.querySelector(selector);
 
@@ -28,6 +32,10 @@ const els = {
   go: $("#go"),
   external: $("#external"),
   clear: $("#clear"),
+  settings: $("#settings"),
+  settingsMenu: $("#settingsMenu"),
+  settingsClose: $("#settingsClose"),
+  settingsReset: $("#settingsReset"),
   frames: $("#frames"),
   tabs: $("#tabs"),
   newTab: $("#newTab"),
@@ -122,6 +130,39 @@ function toast(message) {
 function focusAddress() {
   els.address.focus();
   els.address.select();
+}
+
+/* -------------------------------------------------------------- settings */
+
+function renderSettings() {
+  const current = appearance?.get() ?? { theme: "system", density: "comfortable" };
+  for (const choice of els.settingsMenu.querySelectorAll("[data-theme-choice]")) {
+    choice.setAttribute(
+      "aria-checked",
+      String(choice.dataset.themeChoice === current.theme),
+    );
+  }
+  for (const choice of els.settingsMenu.querySelectorAll("[data-density-choice]")) {
+    choice.setAttribute(
+      "aria-checked",
+      String(choice.dataset.densityChoice === current.density),
+    );
+  }
+}
+
+function setSettingsOpen(open) {
+  els.settingsMenu.hidden = !open;
+  els.settings.setAttribute("aria-expanded", String(open));
+  if (!open) return;
+  renderSettings();
+  const selected = els.settingsMenu.querySelector('[aria-checked="true"]');
+  requestAnimationFrame(() => (selected ?? els.settingsClose).focus());
+}
+
+function closeSettings({ restoreFocus = false } = {}) {
+  if (els.settingsMenu.hidden) return;
+  setSettingsOpen(false);
+  if (restoreFocus) els.settings.focus();
 }
 
 /* ------------------------------------------------------------------ tabs */
@@ -326,6 +367,7 @@ function loadEntry(tab, entry) {
 }
 
 function showStart() {
+  closeSettings();
   const tab = activeTab();
   if (!tab) return;
   tab.entry = null;
@@ -388,6 +430,7 @@ function applyOutcome(outcome, { push = true, tab = activeTab() } = {}) {
 async function navigate(raw, { tab = activeTab(), push = true } = {}) {
   const input = String(raw ?? "").trim();
   if (!input) return;
+  closeSettings();
   if (!invoke) {
     toast("Tauri IPC is not available. Run the app with `npm run dev`.");
     return;
@@ -419,6 +462,7 @@ async function navigate(raw, { tab = activeTab(), push = true } = {}) {
 /* ------------------------------------------------------------------ modal */
 
 function showConflict(outcome, tab = activeTab()) {
+  closeSettings();
   if (!tab) tab = newTab();
   state.pending = { tabId: tab.id, outcome };
   activateTab(tab.id);
@@ -440,6 +484,7 @@ function showConflict(outcome, tab = activeTab()) {
 }
 
 function showUnavailable(outcome, tab = activeTab()) {
+  closeSettings();
   if (!tab) tab = newTab();
   state.pending = { tabId: tab.id, outcome };
   activateTab(tab.id);
@@ -691,6 +736,60 @@ function bind() {
     }
   });
 
+  els.settings.addEventListener("click", (event) => {
+    event.stopPropagation();
+    setSettingsOpen(els.settingsMenu.hidden);
+  });
+
+  els.settingsClose.addEventListener("click", () => closeSettings({ restoreFocus: true }));
+
+  els.settingsMenu.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) {
+      return;
+    }
+    const radio = event.target.closest('[role="radio"]');
+    const group = radio?.closest('[role="radiogroup"]');
+    if (!group) return;
+    const choices = [...group.querySelectorAll('[role="radio"]')];
+    const index = choices.indexOf(radio);
+    if (index < 0) return;
+    event.preventDefault();
+    const forward = event.key === "ArrowRight" || event.key === "ArrowDown";
+    const next = (index + (forward ? 1 : -1) + choices.length) % choices.length;
+    choices[next].focus();
+    choices[next].click();
+  });
+
+  els.settingsMenu.addEventListener("click", (event) => {
+    const themeChoice = event.target.closest("[data-theme-choice]");
+    if (themeChoice) {
+      appearance?.setTheme(themeChoice.dataset.themeChoice);
+      renderSettings();
+      return;
+    }
+    const densityChoice = event.target.closest("[data-density-choice]");
+    if (densityChoice) {
+      appearance?.setDensity(densityChoice.dataset.densityChoice);
+      renderSettings();
+    }
+  });
+
+  els.settingsReset.addEventListener("click", () => {
+    if (!appearance) return;
+    appearance.setTheme("system");
+    appearance.setDensity("comfortable");
+    renderSettings();
+    toast("Appearance reset.");
+  });
+
+  document.addEventListener("click", (event) => {
+    if (els.settingsMenu.hidden) return;
+    if (event.target.closest(".settings-wrap")) return;
+    closeSettings();
+  });
+
+  window.addEventListener("fdn:appearance", renderSettings);
+
   els.newTab.addEventListener("click", () => {
     newTab({ activate: true });
     focusAddress();
@@ -782,6 +881,17 @@ function bind() {
     const mod = event.metaKey || event.ctrlKey;
     const key = event.key.toLowerCase();
 
+    if (event.key === "Escape") {
+      if (!els.modal.hidden) {
+        hideModal();
+        return;
+      }
+      if (!els.settingsMenu.hidden) {
+        closeSettings({ restoreFocus: true });
+        return;
+      }
+    }
+
     if (mod && key === "l") {
       event.preventDefault();
       focusAddress();
@@ -795,6 +905,9 @@ function bind() {
     } else if (mod && key === "r") {
       event.preventDefault();
       refresh();
+    } else if (mod && key === ",") {
+      event.preventDefault();
+      setSettingsOpen(els.settingsMenu.hidden);
     } else if (event.ctrlKey && event.key === "Tab") {
       event.preventDefault();
       cycleTab(event.shiftKey ? -1 : 1);
@@ -804,14 +917,13 @@ function bind() {
     } else if (event.altKey && event.key === "ArrowRight") {
       event.preventDefault();
       go(1);
-    } else if (event.key === "Escape" && !els.modal.hidden) {
-      hideModal();
     }
   });
 }
 
 async function boot() {
   bind();
+  renderSettings();
   newTab({ activate: true });
   setStatus("idle");
 

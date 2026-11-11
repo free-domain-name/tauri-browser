@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Free Domain Name contributors
+
 //! Resolution hierarchy and conflict detection.
 //!
 //! For every navigation the browser asks this module for a plan:

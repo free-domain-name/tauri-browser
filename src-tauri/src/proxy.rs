@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: GPL-3.0-only
+// Copyright (C) 2026 Free Domain Name contributors
+
 //! The `fdn://` custom-protocol handler.
 //!
 //! Registry-resolved pages are not loaded from the public web directly. The

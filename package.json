@@ -12,9 +12,12 @@
     "android:init": "tauri android init",
     "android:dev": "tauri android dev",
     "android:build": "tauri android build --apk",
-    "icon": "tauri icon assets/icon.png"
+    "icon": "tauri icon assets/icon.svg --ios-color \"#080d24\""
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"
-  }
+  },
+  "license": "GPL-3.0-only",
+  "author": "Free Domain Name contributors",
+  "homepage": "https://github.com/free-domain-name/tauri-browser"
 }

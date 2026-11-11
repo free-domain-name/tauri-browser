@@ -359,6 +359,40 @@ cache size and the last debug binary. For verbose CLI output use
   because the proxy origin is `fdn.<domain>` / `fdn://`. Sessions may not survive
   on every platform.
 
+### Automated security checks
+
+The [security workflow](.github/workflows/security.yml) runs on pushes to
+`main`, pull requests, and a weekly schedule:
+
+- **Snyk Open Source** checks the npm dependency tree.
+- **Snyk Code** checks the JavaScript chrome for code issues.
+- **`npm audit --audit-level=high`** is an always-on baseline for high and
+  critical npm advisories.
+- **RustSec** checks `src-tauri/Cargo.lock` for vulnerable Rust dependencies.
+
+Snyk needs a repository secret named `SNYK_TOKEN` (Snyk account settings → API
+token). Add it under **Settings → Secrets and variables → Actions**. Until it is
+configured, the Snyk steps are skipped with a workflow warning; `npm audit` and
+RustSec still run. The workflow uploads Snyk SARIF results to GitHub code
+scanning when the secret is present.
+
+Snyk Open Source does not scan Cargo manifests directly, so RustSec is used for
+the desktop runtime and its Tauri/GTK dependency graph. Snyk Code's Rust support
+is currently Enterprise-only; the free scan covers the JavaScript chrome.
+
+Local equivalents:
+
+```bash
+npm audit --audit-level=high
+cargo install cargo-audit --locked
+cargo audit --file src-tauri/Cargo.lock
+```
+
+At the v0.1.0 baseline, `npm audit` reports no vulnerabilities and RustSec
+reports no vulnerabilities. RustSec also prints informational unmaintained and
+unsound advisories from the Linux GTK stack; they are surfaced by the workflow,
+not suppressed.
+
 ## Known limitations (v1)
 
 - **Framing:** public sites that send `X-Frame-Options`/`frame-ancestors` refuse

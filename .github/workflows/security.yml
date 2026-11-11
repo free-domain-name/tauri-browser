@@ -1,0 +1,113 @@
+name: Security checks
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  snyk:
+    name: Snyk and npm audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Check Snyk configuration
+        id: snyk
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          if [ -n "$SNYK_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Snyk is not configured::Add a SNYK_TOKEN repository secret to run Snyk Open Source and Snyk Code."
+          fi
+
+      # Always-on baseline. It needs no account and still catches high/critical
+      # npm advisories if the Snyk secret has not been configured yet.
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=high
+
+      - name: Install Snyk CLI
+        if: always() && steps.snyk.outputs.enabled == 'true'
+        uses: snyk/actions/setup@v1.0.0
+
+      - name: Snyk Open Source (npm)
+        if: always() && steps.snyk.outputs.enabled == 'true'
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          snyk test \
+            --file=package.json \
+            --severity-threshold=high \
+            --sarif-file-output=snyk-oss.sarif
+
+      - name: Snyk Code
+        if: always() && steps.snyk.outputs.enabled == 'true'
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+        run: |
+          snyk code test \
+            --severity-threshold=high \
+            --sarif-file-output=snyk-code.sarif
+
+      - name: Upload Snyk Open Source results
+        if: always() && steps.snyk.outputs.enabled == 'true' && hashFiles('snyk-oss.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-oss.sarif
+          category: snyk-open-source
+
+      - name: Upload Snyk Code results
+        if: always() && steps.snyk.outputs.enabled == 'true' && hashFiles('snyk-code.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: snyk-code.sarif
+          category: snyk-code
+
+  rustsec:
+    name: RustSec audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      checks: write
+      issues: write
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      # Snyk Open Source does not scan Cargo manifests directly. RustSec covers
+      # the desktop runtime's Rust dependency graph, including Tauri and GTK.
+      - name: Audit Rust dependencies
+        uses: rustsec/audit-check@v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          working-directory: src-tauri

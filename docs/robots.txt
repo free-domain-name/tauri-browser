@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://free-domain-name.github.io/tauri-browser/sitemap.xml

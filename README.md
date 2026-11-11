@@ -13,7 +13,18 @@ session.
 Built with Tauri v2 (Rust + system webview) and a vanilla HTML/CSS/JS chrome.
 Tabs, the address bar, history and the resolution status all live in the chrome;
 each tab owns its own iframe so switching tabs keeps the page and its form state
-alive. The chrome is GPLv3, open source, and has light/dark and compact layouts.
+alive. The chrome is GPLv3, open source, and has light/dark, compact layouts,
+seven built-in skins and a custom CSS editor.
+
+<p align="center">
+  <strong><a href="https://free-domain-name.github.io/tauri-browser/">Documentation, quick start &amp; skin gallery &rarr;</a></strong>
+</p>
+
+<p align="center">
+  <a href="https://free-domain-name.github.io/tauri-browser/">
+    <img src="docs/assets/hero-default-dark.png" width="960" alt="Free Domain Browser start page in the dark Default skin" />
+  </a>
+</p>
 
 ## How resolution works
 
@@ -135,6 +146,7 @@ misses.
 
 ```text
 assets/icon.svg          app icon source (open-orbit universe)
+docs/                    static GitHub Pages documentation and screenshots
 ui/                      browser chrome (tabs, address bar, history, claim, modal)
 ui/appearance.js         theme + density + skin bootstrap (before first paint)
 ui/skins.css             seven built-in chrome palettes and textures

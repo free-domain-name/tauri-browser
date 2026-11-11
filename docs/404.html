@@ -1,0 +1,46 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Copyright (C) 2026 Free Domain Name contributors -->
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Page not found — Free Domain Browser</title>
+    <meta name="robots" content="noindex" />
+    <link rel="icon" href="assets/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script>
+      (() => {
+        try {
+          const saved = localStorage.getItem("fdn.docs.theme");
+          if (saved === "light" || saved === "dark") {
+            document.documentElement.dataset.theme = saved;
+            return;
+          }
+        } catch {}
+        const light = window.matchMedia?.("(prefers-color-scheme: light)")?.matches;
+        document.documentElement.dataset.theme = light ? "light" : "dark";
+      })();
+    </script>
+  </head>
+  <body class="notfound">
+    <main class="notfound-card">
+      <img src="assets/icon.svg" width="64" height="64" alt="" />
+      <p class="kicker">404 · Name not found</p>
+      <h1>That name didn’t resolve.</h1>
+      <p class="notfound-copy">
+        The page may have moved, or the link may be incomplete. The documentation,
+        quick start and skin gallery are all on the main page.
+      </p>
+      <div class="hero-actions">
+        <a class="button primary" href="/tauri-browser/">Back to the documentation</a>
+        <a
+          class="button quiet"
+          href="https://github.com/free-domain-name/tauri-browser"
+          target="_blank"
+          rel="noreferrer"
+        >Open GitHub</a>
+      </div>
+    </main>
+  </body>
+</html>

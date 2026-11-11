@@ -47,6 +47,8 @@ pub enum OutcomeKind {
     Navigate,
     Conflict,
     Unavailable,
+    /// A free-namespace name that the registry does not know yet.
+    Unregistered,
     Error,
 }
 
@@ -107,6 +109,12 @@ pub const fn proxy_base() -> &'static str {
 
 pub fn registry_url(domain: &str, path: &str) -> String {
     format!("{}{}{}", proxy_base(), domain, normalize_path(path))
+}
+
+/// `.fdn` is the registry's own namespace: a miss there is not a public DNS
+/// failure, it means the name is still unclaimed.
+fn is_free_namespace(domain: &str) -> bool {
+    domain == "fdn" || domain.ends_with(".fdn")
 }
 
 pub fn public_url(domain: &str, path: &str, scheme: &str) -> String {
@@ -318,6 +326,21 @@ impl Navigator {
         };
 
         let Some(record) = record else {
+            if is_free_namespace(&parsed.domain) {
+                return Ok(NavigationOutcome {
+                    kind: OutcomeKind::Unregistered,
+                    domain: parsed.domain.clone(),
+                    path: parsed.path.clone(),
+                    source: Source::None,
+                    url: None,
+                    registry_url: None,
+                    public_url: Some(public_url),
+                    registry_target: None,
+                    message: Some(
+                        "This name is not registered in the Free Domain Registry yet.".into(),
+                    ),
+                });
+            }
             return Ok(NavigationOutcome::navigate(
                 &parsed.domain,
                 &parsed.path,
@@ -462,5 +485,30 @@ mod tests {
         let navigator = Navigator::new().expect("navigator");
         assert!(navigator.resolves_publicly("google.com").await);
         assert!(!navigator.resolves_publicly("hello.fdn").await);
+    }
+
+    #[test]
+    fn recognises_the_free_namespace() {
+        assert!(is_free_namespace("fdn"));
+        assert!(is_free_namespace("hello.fdn"));
+        assert!(is_free_namespace("denem111e.fdn"));
+        assert!(!is_free_namespace("example.com"));
+        assert!(!is_free_namespace("fdn.example.com"));
+    }
+
+    #[tokio::test]
+    #[ignore = "network: reads the live GitHub registry"]
+    async fn live_unregistered_fdn_name_is_available() {
+        let dir =
+            std::env::temp_dir().join(format!("fdn-unregistered-test-{}", std::process::id()));
+        let registry = RegistryClient::new(dir.clone()).expect("cache dir");
+        let navigator = Navigator::new().expect("navigator");
+        let outcome = navigator
+            .resolve(&registry, "https://definitely-not-registered-xyz.fdn/")
+            .await
+            .expect("resolve");
+        assert_eq!(outcome.kind, OutcomeKind::Unregistered);
+        assert_eq!(outcome.domain, "definitely-not-registered-xyz.fdn");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

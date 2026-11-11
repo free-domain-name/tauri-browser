@@ -39,16 +39,32 @@ const BRIDGE_SCRIPT: &str = r#"<script data-fdn-bridge="1">
     try {
       parent.postMessage({
         fdn: "location",
-        host: location.hostname,
-        path: location.pathname + location.search + location.hash,
+        href: location.href,
         title: document.title || ""
       }, "*");
     } catch (error) { /* the parent may be gone */ }
   }
+  function wrapHistory(name) {
+    var original = history[name];
+    if (typeof original !== "function") return;
+    history[name] = function () {
+      var result = original.apply(this, arguments);
+      setTimeout(report, 0);
+      return result;
+    };
+  }
+  wrapHistory("pushState");
+  wrapHistory("replaceState");
   window.addEventListener("load", report);
   window.addEventListener("popstate", report);
   window.addEventListener("hashchange", report);
-  document.addEventListener("click", function () { setTimeout(report, 60); }, true);
+  document.addEventListener("click", function () { setTimeout(report, 80); }, true);
+  var title = document.querySelector("title");
+  if (title && window.MutationObserver) {
+    new MutationObserver(report).observe(title, {
+      childList: true, subtree: true, characterData: true
+    });
+  }
   report();
 })();
 </script>"#;

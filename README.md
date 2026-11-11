@@ -7,6 +7,9 @@ asks the user which destination they want and remembers the answer for the
 session.
 
 Built with Tauri v2 (Rust + system webview) and a vanilla HTML/CSS/JS chrome.
+Tabs, the address bar, history and the resolution status all live in the chrome;
+each tab owns its own iframe so switching tabs keeps the page and its form state
+alive.
 
 ## How resolution works
 
@@ -16,7 +19,8 @@ address bar
     ▼
 parse input ──► registry lookup (memory → disk → raw.githubusercontent.com)
     │                         │
-    │                         ├── no record ──────────────► public https://
+    │                         ├── no record ──► .fdn name ──► CLAIM PAGE
+    │                         │                └── other ────► public https://
     │                         │
     │                         └── record ──► does public DNS resolve?
     │                                           │
@@ -35,6 +39,7 @@ or GitHub requests itself. Plans are one of:
 | `kind`        | Meaning                                                        |
 | ------------- | -------------------------------------------------------------- |
 | `navigate`    | Load `url`; `source` is `github_registry` or `public_icann`.   |
+| `unregistered`| A `.fdn` name is absent from the registry. Show the claim page.|
 | `conflict`    | Both exist. Show the modal and call `choose_resolution`.       |
 | `unavailable` | GitHub could not be read. Retry, or opt into the public web.   |
 | `error`       | Invalid input (for example a `javascript:` URL).               |
@@ -94,14 +99,27 @@ Tauri maps the workaround URL and reverts it before calling
 5. rewrites absolute URLs for the registry name and the target host to the
    proxy scheme, so links, CSS, images and JS keep flowing through the
    interceptor,
-6. injects a tiny bridge script that reports in-page URL changes to the chrome.
+6. injects a tiny bridge script that reports the full in-page URL and title to
+   the chrome. The chrome updates the address bar, tab title and history entry;
+   `pushState`/`replaceState`, `popstate`, hash changes, link clicks and title
+   mutations are all observed.
 
 Public fallback pages are loaded over normal `https://` and are not proxied.
+
+### Available `.fdn` names
+
+`.fdn` is the registry's own namespace. If a `.fdn` name has no record, the
+browser does **not** try public DNS: it shows an **Available** claim page with the
+exact shard path, a JSON template, and buttons to open the registry's GitHub
+"new file" flow. After the pull request merges, the re-check button clears the
+negative cache and resolves the name normally. A name in both the registry and
+public DNS still shows the conflict modal; the claim page is only for registry
+misses.
 
 ## Project layout
 
 ```text
-ui/                      browser chrome (address bar, history, modal)
+ui/                      browser chrome (tabs, address bar, history, claim, modal)
 src-tauri/
   Cargo.toml
   tauri.conf.json
@@ -128,6 +146,13 @@ src-tauri/
 
 On a conflict the Rust command also emits the `conflict-detected` event with the
 same payload.
+
+## Tabs and keyboard
+
+`Ctrl/Cmd+T` opens a tab, `Ctrl/Cmd+W` closes the active one, `Ctrl/Cmd+L`
+focuses the address bar, `Ctrl/Cmd+R` reloads, `Ctrl+Tab` cycles tabs, and
+`Alt+Left`/`Alt+Right` walk the tab's own history. Middle-clicking a tab closes
+it. Tabs are intentionally in-memory; a restart starts with one new tab.
 
 ## Build
 
@@ -192,8 +217,11 @@ The webview loads `ui/` directly; there is no bundler or dev server.
   under the registry name, so absolute links to a different host leave the proxy
   and are not tracked in the address bar.
 - **History:** the chrome tracks address-bar navigations and registry in-page
-  navigations reported by the bridge; link clicks on public iframes cannot be
-  observed.
+  navigations reported by the bridge, per tab. Link clicks on public iframes
+  cannot be observed because they are cross-origin.
+- **Tabs:** each tab is an iframe in the single webview (multi-webview is not
+  available on Android). A tab that navigates to a site which refuses framing
+  shows the browser's blank/error frame; use the external-open button.
 - **No wildcard records:** the current registry schema is exact-name only.
 - **Session choices** are in memory and disappear when the app exits.
 
@@ -203,8 +231,14 @@ The webview loads `ui/` directly; there is no bundler or dev server.
 cd src-tauri && cargo test --lib
 ```
 
-Covers shard-path derivation (Rust and Node must agree), input parsing, URL
-rewriting, cookie sanitization and error-page escaping.
+20 tests cover shard-path derivation (Rust and Node must agree), input parsing,
+the unregistered `.fdn` branch, URL rewriting, cookie sanitization, the bridge
+and error-page escaping. Three `#[ignore]` live tests check the real registry
+and DNS:
+
+```bash
+cd src-tauri && cargo test --lib -- --ignored
+```
 
 The registry validates itself with:
 

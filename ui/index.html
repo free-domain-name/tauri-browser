@@ -9,6 +9,13 @@
   </head>
   <body>
     <div class="app">
+      <nav class="tabstrip" aria-label="Browser tabs">
+        <div id="tabs" class="tabs" role="tablist" aria-label="Open tabs"></div>
+        <button id="newTab" class="tab-new" type="button" aria-label="New tab" title="New tab (Ctrl+T)">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14" /><path d="M5 12h14" /></svg>
+        </button>
+      </nav>
+
       <header class="toolbar">
         <div class="nav" role="group" aria-label="History">
           <button id="back" class="icon" type="button" aria-label="Back" title="Back (Alt+Left)" disabled>
@@ -70,6 +77,8 @@
       </header>
 
       <main class="viewport">
+        <div id="frames" class="frames"></div>
+
         <section id="start" class="start" aria-label="Start page">
           <div class="start-inner">
             <div class="mark" aria-hidden="true">
@@ -117,13 +126,38 @@
           </div>
         </section>
 
-        <iframe
-          id="frame"
-          title="Page content"
-          referrerpolicy="no-referrer"
-          allow="fullscreen; clipboard-read; clipboard-write"
-          hidden
-        ></iframe>
+        <section id="claim" class="claim" hidden aria-label="Available name">
+          <div class="claim-inner">
+            <span class="claim-badge">Available</span>
+            <h1><span id="claimDomain">name.fdn</span> is not taken yet</h1>
+            <p class="lede">
+              Nobody has claimed this name in the Free Domain Registry. Claiming it is a
+              pull request; after it merges, every Free Domain Browser can open it.
+            </p>
+            <div class="claim-actions">
+              <button id="claimRegister" class="primary" type="button">Register on GitHub</button>
+              <button id="claimRepo" class="secondary" type="button">Browse the registry</button>
+              <button id="claimRecheck" class="link" type="button">I registered it — re-check</button>
+            </div>
+
+            <div class="claim-card">
+              <h2>How claiming works</h2>
+              <ol>
+                <li>Fork <span class="mono">free-domain-name/registry</span>.</li>
+                <li>
+                  Create <span id="claimPath" class="mono">d/e/n/e/name.fdn.json</span> with
+                  this record:
+                </li>
+              </ol>
+              <pre id="claimJson" class="claim-json"></pre>
+              <p class="fineprint">
+                CI checks the shard path, the four fields, the target URL and the TTL.
+                Point <span class="mono">target_url</span> at the server that should answer.
+              </p>
+            </div>
+          </div>
+        </section>
+
         <div id="progress" class="progress" hidden aria-hidden="true"><span></span></div>
       </main>
     </div>

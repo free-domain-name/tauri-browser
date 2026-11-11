@@ -84,6 +84,148 @@ input {
   height: 100%;
 }
 
+/* -------------------------------------------------------------- tab strip */
+
+.tabstrip {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 6px 10px 0;
+  padding-top: max(6px, env(safe-area-inset-top));
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  z-index: 12;
+}
+
+.tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-width: 132px;
+  max-width: 220px;
+  height: 32px;
+  padding: 0 5px 0 10px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 9px 9px 0 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+  user-select: none;
+}
+
+.tab:hover {
+  background: var(--surface-2);
+}
+
+.tab[aria-selected="true"] {
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.tab-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: 0.55;
+}
+
+.tab-dot[data-source="github_registry"] {
+  background: var(--registry);
+  opacity: 1;
+}
+
+.tab-dot[data-source="public_icann"] {
+  background: var(--public);
+  opacity: 1;
+}
+
+.tab-dot[data-source="conflict"] {
+  background: var(--conflict);
+  opacity: 1;
+}
+
+.tab-dot[data-source="unregistered"] {
+  background: var(--registry);
+  opacity: 1;
+}
+
+.tab-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+
+.tab-close {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.tab-close:hover {
+  background: var(--surface-2);
+  opacity: 1;
+}
+
+.tab-new {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-bottom: 1px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.tab-new:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.tab-new svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
 /* ---------------------------------------------------------------- toolbar */
 
 .toolbar {
@@ -96,7 +238,6 @@ input {
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   z-index: 10;
-  padding-top: max(10px, env(safe-area-inset-top));
 }
 
 .nav,
@@ -184,6 +325,14 @@ input {
 
 .scheme-dot[data-source="conflict"] {
   background: var(--conflict);
+}
+
+.scheme-dot[data-source="unregistered"] {
+  background: var(--registry);
+}
+
+.scheme-dot[data-source="unavailable"] {
+  background: var(--danger);
 }
 
 #address {
@@ -295,7 +444,13 @@ input {
   background: var(--surface);
 }
 
-#frame {
+.frames {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.frame {
   display: block;
   width: 100%;
   height: 100%;
@@ -303,7 +458,7 @@ input {
   background: #fff;
 }
 
-#frame[hidden] {
+.frame[hidden] {
   display: none;
 }
 
@@ -337,7 +492,9 @@ input {
 /* --------------------------------------------------------------- start page */
 
 .start {
-  height: 100%;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
   overflow: auto;
   padding: 40px 24px 56px;
   background:
@@ -453,6 +610,100 @@ input {
   max-width: 38rem;
   color: var(--muted);
   font-size: 12px;
+}
+
+/* ------------------------------------------------------------ claim page */
+
+.claim {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: auto;
+  padding: 40px 24px 56px;
+  background:
+    radial-gradient(900px 420px at 20% -10%, var(--registry-soft), transparent 70%),
+    var(--bg);
+}
+
+.claim-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  animation: rise 240ms ease both;
+}
+
+.claim-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--registry-soft);
+  color: var(--registry);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.claim h1 {
+  margin: 12px 0 10px;
+  font-size: clamp(25px, 3.8vw, 36px);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.claim h1 .mono {
+  font-size: 0.92em;
+}
+
+.claim .lede {
+  max-width: 42rem;
+  margin: 0 0 22px;
+  font-size: 15px;
+}
+
+.claim-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 28px;
+}
+
+.claim-card {
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.claim-card h2 {
+  margin: 0 0 10px;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+}
+
+.claim-card ol {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  color: var(--muted);
+}
+
+.claim-card li + li {
+  margin-top: 4px;
+}
+
+.claim-json {
+  margin: 0;
+  padding: 14px 16px;
+  overflow: auto;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: 12.5px/1.6 var(--mono);
+}
+
+.claim-card .fineprint {
+  margin: 14px 0 0;
+  max-width: none;
 }
 
 /* ------------------------------------------------------------------- modal */
@@ -658,10 +909,19 @@ button.secondary:hover {
 /* ------------------------------------------------------------------ mobile */
 
 @media (max-width: 720px) {
+  .tabstrip {
+    padding: 6px 8px 0;
+    padding-top: max(6px, env(safe-area-inset-top));
+  }
+
+  .tab {
+    min-width: 108px;
+    max-width: 160px;
+  }
+
   .toolbar {
     gap: 6px;
     padding: 8px;
-    padding-top: max(8px, env(safe-area-inset-top));
   }
 
   .nav .icon:nth-child(4) {
@@ -690,8 +950,13 @@ button.secondary:hover {
     grid-template-columns: 1fr;
   }
 
-  .start {
+  .start,
+  .claim {
     padding: 28px 16px 44px;
+  }
+
+  .claim-card {
+    padding: 16px;
   }
 }
 

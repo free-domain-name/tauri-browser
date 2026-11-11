@@ -151,8 +151,17 @@
               </ol>
               <pre id="claimJson" class="claim-json"></pre>
               <p class="fineprint">
+                <strong>An IP address is enough</strong> — like an A record for HTTP.
+                No domain or DNS record is needed. Replace
+                <span class="mono">203.0.113.10</span> with your server's public IP
+                (add <span class="mono">:port</span> or a path if needed). Use
+                <span class="mono">http://</span> for a bare IP; HTTPS certificates
+                are issued to names, not addresses.
+              </p>
+              <p class="fineprint">
                 CI checks the shard path, the four fields, the target URL and the TTL.
-                Point <span class="mono">target_url</span> at the server that should answer.
+                When the target is an IP, the browser sends the free name as
+                <span class="mono">Host</span>, so one address can serve many names.
               </p>
             </div>
           </div>

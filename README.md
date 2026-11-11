@@ -56,7 +56,7 @@ https://raw.githubusercontent.com/free-domain-name/registry/main/t/e/s/t/test.xy
 ```json
 {
   "domain": "example.com",
-  "target_url": "http://192.168.1.50:8080",
+  "target_url": "http://203.0.113.10:8080",
   "owner_github": "username",
   "ttl": 3600
 }
@@ -65,6 +65,11 @@ https://raw.githubusercontent.com/free-domain-name/registry/main/t/e/s/t/test.xy
 The shard path is the domain with dots removed, padded to four characters, split
 one character per directory. A short name pads with `_` (`a.co` →
 `a/c/o/_/a.co.json`). Four levels give 37⁴ buckets and keep directories small.
+
+`target_url` can be an IP literal or a hostname; an IP is the simplest
+registration and behaves like an A record for HTTP. Use `http://` for a bare
+IP — HTTPS certificates are issued to names, not addresses (unless the
+certificate has an IP SAN). A port and a path are optional.
 
 `ttl` is the client cache lifetime in seconds. Records live in memory
 (`Arc<RwLock<HashMap<String, CachedRecord>>>`) and in
@@ -110,8 +115,8 @@ Public fallback pages are loaded over normal `https://` and are not proxied.
 
 `.fdn` is the registry's own namespace. If a `.fdn` name has no record, the
 browser does **not** try public DNS: it shows an **Available** claim page with the
-exact shard path, a JSON template, and buttons to open the registry's GitHub
-"new file" flow. After the pull request merges, the re-check button clears the
+exact shard path, an IP-first JSON template, and buttons to open the registry's
+GitHub "new file" flow with that JSON prefilled. After the pull request merges, the re-check button clears the
 negative cache and resolves the name normally. A name in both the registry and
 public DNS still shows the conflict modal; the claim page is only for registry
 misses.

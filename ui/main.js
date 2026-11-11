@@ -573,7 +573,7 @@ function shardPath(domain) {
 function claimRecord(domain) {
   return {
     domain,
-    target_url: "https://example.com",
+    target_url: "http://203.0.113.10:8080",
     owner_github: "your-github-handle",
     ttl: 3600,
   };

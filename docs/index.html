@@ -410,7 +410,8 @@
                   <p>
                     When both systems answer, pick a destination once. When a name is missing
                     from the registry and public DNS, follow the claim page to the registry pull
-                    request, then use the re-check button.
+                    request, or use its <strong>Copy JSON</strong> button if GitHub flattens
+                    the prefilled file. Then use the re-check button.
                   </p>
                 </div>
               </li>
@@ -936,8 +937,10 @@ npm run dev</code></pre>
               <p>
                 Type it. A missing <code>.fdn</code> name, or any other name that public DNS
                 returns NXDOMAIN for, opens a claim page with the exact shard path and an IP-first
-                JSON template. The registry accepts any hostname. Merge the pull request, then use
-                re-check. This creates a registry mapping, not an ICANN registration.
+                JSON template. The prefilled GitHub link normally keeps the formatting; if it
+                collapses the file to one line, use <strong>Copy JSON</strong> and paste. The
+                registry accepts any hostname. Merge the pull request, then use re-check. This
+                creates a registry mapping, not an ICANN registration.
               </p>
             </details>
             <details>

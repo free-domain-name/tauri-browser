@@ -147,8 +147,10 @@ the name is genuinely absent:
 
 The claim page works for any hostname and shows the exact shard path, an IP-first
 JSON template, and buttons to open the registry's GitHub "new file" flow with
-that JSON prefilled. After the pull request merges, the re-check button clears
-the negative cache and resolves the name normally.
+that JSON prefilled. It also has a **Copy JSON** button, so the formatted record
+can be pasted if GitHub's editor flattens the prefilled text. After the pull
+request merges, the re-check button clears the negative cache and resolves the
+name normally.
 
 Claiming a public-TLD name creates a **Free Domain Registry mapping**; it does
 not buy the ICANN registration. If that public domain becomes active later, the

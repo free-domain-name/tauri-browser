@@ -52,6 +52,7 @@ const els = {
   claimPath: $("#claimPath"),
   claimJson: $("#claimJson"),
   claimRegister: $("#claimRegister"),
+  claimCopy: $("#claimCopy"),
   claimRepo: $("#claimRepo"),
   claimRecheck: $("#claimRecheck"),
   progress: $("#progress"),
@@ -160,6 +161,32 @@ function toast(message) {
   state.toastTimer = setTimeout(() => {
     els.toast.hidden = true;
   }, 4200);
+}
+
+async function copyText(text) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    /* fall through to the selection-based copy */
+  }
+  try {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.top = "-1000px";
+    area.style.opacity = "0";
+    document.body.append(area);
+    area.select();
+    const copied = document.execCommand("copy");
+    area.remove();
+    return copied;
+  } catch {
+    return false;
+  }
 }
 
 function focusAddress() {
@@ -907,11 +934,24 @@ function bind() {
     sample.addEventListener("click", () => navigate(sample.dataset.url));
   });
 
-  els.claimRegister.addEventListener("click", () => {
+  els.claimRegister.addEventListener("click", async () => {
     if (!claimTarget) return;
+    // GitHub's new-file editor usually keeps the URL-encoded line breaks, but
+    // some editor versions flatten them. Keep a formatted copy on the clipboard
+    // so the record can always be pasted intact.
+    const copied = await copyText(els.claimJson.textContent);
     invoke("open_external", { url: claimTarget.registerUrl }).catch((error) =>
       toast(String(error)),
     );
+    if (copied) {
+      toast("Opening GitHub — formatted JSON copied too.");
+    }
+  });
+
+  els.claimCopy.addEventListener("click", async () => {
+    if (!claimTarget) return;
+    const copied = await copyText(els.claimJson.textContent);
+    toast(copied ? "Formatted JSON copied." : "Could not copy — select the JSON manually.");
   });
 
   els.claimRepo.addEventListener("click", () => {

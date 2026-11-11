@@ -112,6 +112,7 @@ async fn proxy<R: Runtime>(
     let method = reqwest::Method::from_bytes(parts.method.as_str().as_bytes())
         .map_err(|_| AppError::InvalidInput(format!("unsupported method {}", parts.method)))?;
     let is_head = method == reqwest::Method::HEAD;
+    let original_target_host = target.host_str().map(str::to_string);
     let mut current = target;
 
     for hop in 0..=MAX_REDIRECTS {
@@ -127,7 +128,14 @@ async fn proxy<R: Runtime>(
         .await?;
 
         if !response.status().is_redirection() {
-            return build_response(response, &domain, is_head).await;
+            return build_response(
+                response,
+                &domain,
+                original_target_host.as_deref(),
+                current.host_str(),
+                is_head,
+            )
+            .await;
         }
 
         let location = response
@@ -137,7 +145,14 @@ async fn proxy<R: Runtime>(
             .map(str::to_string);
 
         let Some(location) = location else {
-            return build_response(response, &domain, is_head).await;
+            return build_response(
+                response,
+                &domain,
+                original_target_host.as_deref(),
+                current.host_str(),
+                is_head,
+            )
+            .await;
         };
 
         if hop == MAX_REDIRECTS {
@@ -159,7 +174,7 @@ async fn send_hop(
     method: &reqwest::Method,
     url: &Url,
     headers: &HeaderMap,
-    domain: &str,
+    registry_domain: &str,
     request_path: &str,
     body: &[u8],
 ) -> AppResult<reqwest::Response> {
@@ -172,17 +187,19 @@ async fn send_hop(
         builder = builder.header(name, value);
     }
 
-    // The whole point of the registry: the destination sees the name the user
-    // visited, not the IP or host it happens to be served from.
-    builder = builder.header(header::HOST, domain);
+    // A hostname target is fetched as itself, exactly like a normal request.
+    // A bare IP target has no name to send, so the registry name becomes the
+    // Host and the server can virtual-host many free names on one address.
+    let host_header = host_header_for(url, registry_domain);
+    builder = builder.header(header::HOST, &host_header);
 
     // The webview sends fdn:// referers; upstream servers expect a normal URL.
     if headers.contains_key(header::REFERER) {
-        let referer = format!("{}://{}{}", upstream_scheme(url), domain, request_path);
+        let referer = format!("{}://{}{}", upstream_scheme(url), host_header, request_path);
         builder = builder.header(header::REFERER, referer);
     }
     if headers.contains_key(header::ORIGIN) {
-        let origin = format!("{}://{}", upstream_scheme(url), domain);
+        let origin = format!("{}://{}", upstream_scheme(url), host_header);
         builder = builder.header(header::ORIGIN, origin);
     }
 
@@ -191,6 +208,14 @@ async fn send_hop(
     }
 
     builder.send().await.map_err(AppError::from)
+}
+
+fn host_header_for(target: &Url, registry_domain: &str) -> String {
+    match target.host() {
+        Some(url::Host::Ipv4(_)) | Some(url::Host::Ipv6(_)) => registry_domain.to_string(),
+        Some(url::Host::Domain(host)) => host.trim_end_matches('.').to_string(),
+        None => registry_domain.to_string(),
+    }
 }
 
 fn upstream_scheme(url: &Url) -> &'static str {
@@ -250,7 +275,9 @@ fn split_path_and_query(path: &str) -> (&str, Option<&str>) {
 
 async fn build_response(
     response: reqwest::Response,
-    domain: &str,
+    proxy_domain: &str,
+    target_host: Option<&str>,
+    final_host: Option<&str>,
     is_head: bool,
 ) -> AppResult<Response<Cow<'static, [u8]>>> {
     let status = response.status();
@@ -274,10 +301,18 @@ async fn build_response(
         bytes.to_vec()
     };
 
+    let mut rewrite_hosts = vec![proxy_domain];
+    if let Some(host) = target_host {
+        rewrite_hosts.push(host);
+    }
+    if let Some(host) = final_host {
+        rewrite_hosts.push(host);
+    }
+
     let body =
         if !is_head && (content_type.contains("text/html") || content_type.contains("text/css")) {
             let text = String::from_utf8_lossy(&raw_body);
-            let rewritten = rewrite_markup(&text, domain);
+            let rewritten = rewrite_markup(&text, proxy_domain, &rewrite_hosts);
             let rewritten = if content_type.contains("text/html") {
                 inject_bridge(rewritten)
             } else {
@@ -301,7 +336,7 @@ async fn build_response(
         }
         if name == header::LOCATION {
             if let Ok(value) = value.to_str() {
-                builder = builder.header(name, rewrite_markup(value, domain));
+                builder = builder.header(name, rewrite_markup(value, proxy_domain, &rewrite_hosts));
             }
             continue;
         }
@@ -330,16 +365,33 @@ fn sanitize_set_cookie(value: &str) -> String {
         .join("; ")
 }
 
-fn rewrite_markup(input: &str, domain: &str) -> String {
-    let pattern = format!(
-        r#"(?i)(?:https?:)?//{}(?P<tail>[/:'"?#\s]|$)"#,
-        regex::escape(domain)
-    );
-    let Ok(regex) = Regex::new(&pattern) else {
-        return input.to_string();
-    };
-    let replacement = format!("{}{}${{tail}}", proxy_base(), domain);
-    regex.replace_all(input, replacement.as_str()).into_owned()
+fn rewrite_markup(input: &str, proxy_domain: &str, source_hosts: &[&str]) -> String {
+    let mut output = input.to_string();
+    let mut seen: Vec<String> = Vec::new();
+    for host in source_hosts {
+        let host = host.trim_end_matches('.');
+        if host.is_empty() {
+            continue;
+        }
+        let key = host.to_ascii_lowercase();
+        if seen.contains(&key) {
+            continue;
+        }
+        seen.push(key);
+
+        let pattern = format!(
+            r#"(?i)(?:https?:)?//{}(?P<tail>[/'"?#\s]|$)"#,
+            regex::escape(host)
+        );
+        let Ok(regex) = Regex::new(&pattern) else {
+            continue;
+        };
+        let replacement = format!("{}{}${{tail}}", proxy_base(), proxy_domain);
+        output = regex
+            .replace_all(&output, replacement.as_str())
+            .into_owned();
+    }
+    output
 }
 
 fn inject_bridge(mut html: String) -> String {
@@ -406,19 +458,30 @@ mod tests {
     use super::*;
 
     #[test]
-    fn rewrites_same_domain_absolute_and_protocol_relative_urls() {
-        let html = r#"<a href="https://example.com/a">x</a><img src="//example.com/b.png">"#;
-        let rewritten = rewrite_markup(html, "example.com");
-        assert!(rewritten.contains(&format!("{}example.com/a", proxy_base())));
-        assert!(rewritten.contains(&format!("{}example.com/b.png", proxy_base())));
+    fn rewrites_target_and_registry_hosts_to_the_proxy() {
+        let html = r#"<a href="https://example.com/a">x</a><img src="//example.com/b.png"><a href="https://hello.fdn/c">y</a>"#;
+        let rewritten = rewrite_markup(html, "hello.fdn", &["hello.fdn", "example.com"]);
+        assert!(rewritten.contains(&format!("{}hello.fdn/a", proxy_base())));
+        assert!(rewritten.contains(&format!("{}hello.fdn/b.png", proxy_base())));
+        assert!(rewritten.contains(&format!("{}hello.fdn/c", proxy_base())));
         assert!(!rewritten.contains("https://example.com"));
+        assert!(!rewritten.contains("https://hello.fdn"));
     }
 
     #[test]
     fn does_not_rewrite_a_lookalike_domain() {
         let html = r#"<a href="https://example.com.evil.test/">x</a>"#;
-        let rewritten = rewrite_markup(html, "example.com");
+        let rewritten = rewrite_markup(html, "hello.fdn", &["example.com"]);
         assert!(rewritten.contains("https://example.com.evil.test/"));
+    }
+
+    #[test]
+    fn host_header_uses_the_target_name_but_keeps_the_registry_name_for_ips() {
+        let domain_target = Url::parse("https://example.com/landing").expect("url");
+        assert_eq!(host_header_for(&domain_target, "hello.fdn"), "example.com");
+
+        let ip_target = Url::parse("http://192.0.2.10:8080/").expect("url");
+        assert_eq!(host_header_for(&ip_target, "hello.fdn"), "hello.fdn");
     }
 
     #[test]
@@ -449,7 +512,48 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn forwards_the_original_host_header() {
+    async fn fetches_hostname_targets_as_themselves() {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let address = listener.local_addr().expect("addr");
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut buffer = [0u8; 4096];
+            let read = stream.read(&mut buffer).expect("read");
+            let request = String::from_utf8_lossy(&buffer[..read]).to_ascii_lowercase();
+            assert!(request.contains("host: target.test"), "got: {request}");
+            stream
+                .write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok",
+                )
+                .expect("write");
+        });
+
+        let client = reqwest::Client::builder()
+            .resolve("target.test", address)
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("client");
+        let url = Url::parse("http://target.test/hello").expect("url");
+        let response = send_hop(
+            &client,
+            &reqwest::Method::GET,
+            &url,
+            &HeaderMap::new(),
+            "hello.fdn",
+            "/hello",
+            &[],
+        )
+        .await
+        .expect("proxy request");
+
+        assert_eq!(response.status(), reqwest::StatusCode::OK);
+        server.join().expect("server thread");
+    }
+
+    #[tokio::test]
+    async fn ip_targets_keep_the_registry_host_header() {
         use std::io::{Read, Write};
 
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");

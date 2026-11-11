@@ -85,11 +85,15 @@ Tauri maps the workaround URL and reverts it before calling
 `register_asynchronous_uri_scheme_protocol`. The handler then:
 
 1. looks the name up in the registry (cache first),
-2. requests `target_url` with the requested path and **`Host: example.com`**,
-3. follows same-domain redirects internally (max 5),
+2. requests `target_url` with the requested path. A **hostname target** is
+   fetched as itself, so CDNs and normal virtual hosts see the site they serve;
+   an **IP-literal target** receives the registry name as `Host`, so one address
+   can virtual-host many free names,
+3. follows redirects internally (max 5),
 4. strips framing/CSP headers so the page can render in the content view,
-5. rewrites same-domain absolute URLs to the proxy scheme, so links, CSS, images
-   and JS keep flowing through the interceptor,
+5. rewrites absolute URLs for the registry name and the target host to the
+   proxy scheme, so links, CSS, images and JS keep flowing through the
+   interceptor,
 6. injects a tiny bridge script that reports in-page URL changes to the chrome.
 
 Public fallback pages are loaded over normal `https://` and are not proxied.
@@ -184,9 +188,9 @@ The webview loads `ui/` directly; there is no bundler or dev server.
 - **Buffered responses:** Tauri's URI-scheme responder needs a complete body, so
   large downloads and video are buffered up to 64 MiB. Streaming needs a
   different transport (local proxy or range-aware response).
-- **Redirects:** same-domain redirects are followed inside the proxy; redirects
-  to another registry name are handed back to the webview so that name's record
-  applies. Other cross-domain redirects are followed with the original `Host`.
+- **Redirects:** followed inside the proxy, up to five. The final page is served
+  under the registry name, so absolute links to a different host leave the proxy
+  and are not tracked in the address bar.
 - **History:** the chrome tracks address-bar navigations and registry in-page
   navigations reported by the bridge; link clicks on public iframes cannot be
   observed.

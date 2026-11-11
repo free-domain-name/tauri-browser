@@ -323,6 +323,8 @@ GPLv3-compatible. Keep the upstream copyright and license notices when shipping
 binaries.
 
 GPLv3 requires providing the corresponding source for binaries you distribute.
-Publishing releases from this repository satisfies that. Direct distribution
-(GitHub Releases, F-Droid, etc.) is fine; Apple's App Store adds DRM and terms
-that may conflict with GPLv3, so review that before an iOS/Mac App Store release.
+Publishing releases from this repository satisfies that. The license text is
+also bundled with the application (`Contents/Resources/LICENSE` in the macOS
+app). Direct distribution (GitHub Releases, F-Droid, etc.) is fine; Apple's App
+Store adds DRM and terms that may conflict with GPLv3, so review that before an
+iOS/Mac App Store release.

@@ -19,6 +19,8 @@
   const INDEX_CACHE_TTL = 5 * 60 * 1000;
   const GISCUS_ORIGIN = "https://giscus.app";
 
+  // IDs come from the registry's General Discussion category. Keep them in
+  // sync with giscus.json and the one-time giscus app installation.
   const GISCUS = {
     repo: "free-domain-name/registry",
     repoId: "R_kgDOVp0scg",

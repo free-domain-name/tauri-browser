@@ -55,7 +55,8 @@ toggled. Keep both files for every skin when adding a new one.
   itself never posts comments or votes and has no analytics or tracking.
 - The giscus app must be installed once on `free-domain-name/registry`, and the
   registry must have Discussions enabled, for the inline thread to load. The
-  repository root has a `giscus.json` origin allowlist.
+  repository root has a `giscus.json` origin allowlist. GitHub's terms and
+  privacy policy apply inside the embedded thread.
 - `site.js` is dependency-free and handles the theme, screenshot switching,
   skin lightbox, copy button and mobile menu closing.
 - Keep the disclaimer section and the no-AI community policy visible when

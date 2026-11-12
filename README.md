@@ -347,7 +347,9 @@ cache size and the last debug binary. For verbose CLI output use
 
 ## Community reviews and scores
 
-The documentation site has a [Stumble page](https://free-domain-name.github.io/tauri-browser/stumble.html)
+The project [home page](https://free-domain-name.github.io/) publishes a rolling
+seven-day leaderboard and the names that still need a review. The documentation
+site has a [Stumble page](https://free-domain-name.github.io/tauri-browser/stumble.html)
 that picks a random registry name and embeds its public GitHub Discussion with
 [giscus](https://giscus.app). Votes are 👍/👎 reactions on the discussion;
 comments are normal GitHub comments inside the embedded thread. The

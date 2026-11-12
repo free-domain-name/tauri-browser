@@ -8,7 +8,7 @@
     <title>Stumble the registry — Free Domain Browser</title>
     <meta
       name="description"
-      content="Stumble through random names in the Free Domain Name registry. Read human reviews, see community scores, and leave your own comment on GitHub."
+      content="Stumble through random names in the Free Domain Name registry. Read human reviews, see community scores, and vote or comment inline with GitHub."
     />
     <meta name="color-scheme" content="light dark" />
     <meta name="theme-color" content="#080b12" />
@@ -131,7 +131,8 @@
             <h1>Stumble the free web.</h1>
             <p class="lede">
               One random name from the registry, reviewed by people rather than a ranking
-              algorithm. Vote on GitHub. Leave a human comment. Move on.
+              algorithm. Vote with 👍 or 👎, leave a human comment, and move on — the
+              thread is right here.
             </p>
           </div>
 
@@ -169,13 +170,23 @@
               </div>
 
               <div class="stumble-actions">
-                <a class="button primary" id="stumbleReview" href="https://github.com/free-domain-name/registry/issues" target="_blank" rel="noreferrer">
-                  Vote &amp; comment on GitHub
-                </a>
+                <div class="stumble-vote-buttons" role="group" aria-label="Vote on this destination">
+                  <button class="button primary stumble-vote-button" id="stumbleVoteUp" type="button" aria-controls="stumbleThread" aria-describedby="stumbleVoteNote" disabled>
+                    <span aria-hidden="true">👍</span> Upvote
+                  </button>
+                  <button class="button quiet stumble-vote-button" id="stumbleVoteDown" type="button" aria-controls="stumbleThread" aria-describedby="stumbleVoteNote" disabled>
+                    <span aria-hidden="true">👎</span> Downvote
+                  </button>
+                </div>
                 <a class="button quiet" id="stumbleVisit" href="#" target="_blank" rel="noreferrer noopener">
                   Open destination
                 </a>
               </div>
+
+              <p class="stumble-vote-note" id="stumbleVoteNote">
+                Votes are GitHub reactions in the thread below. Sign in with GitHub
+                once; comments stay on this page.
+              </p>
 
               <p class="stumble-warning">
                 Third-party destination. We do not operate, monitor or endorse it.
@@ -194,7 +205,7 @@
               <ul class="stumble-rules">
                 <li><span aria-hidden="true">👍</span> Upvote a destination you found useful.</li>
                 <li><span aria-hidden="true">👎</span> Downvote a dead, unsafe or low-value site.</li>
-                <li><span aria-hidden="true">✍</span> Comment on GitHub. Human-written only.</li>
+                <li><span aria-hidden="true">✍</span> Comment inline with GitHub. Human-written only.</li>
                 <li><span aria-hidden="true">⚑</span> Report abuse to the registry maintainers.</li>
               </ul>
               <p class="stumble-side-note">
@@ -205,19 +216,30 @@
             </aside>
           </div>
 
-          <section class="stumble-comments-section" aria-labelledby="commentsTitle">
+          <section class="stumble-comments-section" id="stumbleThread" aria-labelledby="threadTitle">
             <div class="stumble-comments-head">
               <div>
                 <p class="kicker">The thread</p>
-                <h2 id="commentsTitle">Recent human comments.</h2>
+                <h2 id="threadTitle">Vote and comment here.</h2>
               </div>
-              <a id="stumbleAllComments" href="https://github.com/free-domain-name/registry/issues" target="_blank" rel="noreferrer">
-                Read all comments on GitHub <span aria-hidden="true">→</span>
+              <a id="stumbleDiscussionLink" href="https://github.com/free-domain-name/registry/discussions" target="_blank" rel="noreferrer">
+                Open on GitHub <span aria-hidden="true">→</span>
               </a>
             </div>
-            <div id="stumbleCommentList" class="comment-list" aria-live="polite">
-              <p class="stumble-muted">Loading the conversation…</p>
+            <p class="stumble-thread-note">
+              The inline thread below is powered by GitHub Discussions and giscus.
+              Sign in there to react with 👍 or 👎 and to comment. The score above
+              starts from the public review index and updates live when GitHub
+              reports a reaction.
+            </p>
+            <div class="giscus" id="giscusThread" aria-live="polite">
+              <p class="stumble-muted">Loading the inline thread…</p>
             </div>
+            <p class="stumble-giscus-fallback">
+              <a id="giscusFallback" href="https://github.com/free-domain-name/registry/discussions" target="_blank" rel="noreferrer" hidden>
+                Thread not loading? Open this discussion on GitHub →
+              </a>
+            </p>
           </section>
 
           <div class="stumble-policy">

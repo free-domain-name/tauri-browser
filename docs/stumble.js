@@ -1,22 +1,37 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Copyright (C) 2026 Free Domain Name contributors */
 /**
- * Stumble page: pick a random registry name and show its public GitHub review
- * thread. The review index and comments are read-only public GitHub data.
+ * Stumble page: pick a random registry name and embed its public GitHub
+ * Discussions review thread through giscus.
  *
- * There is deliberately no AI layer, ranking model or tracking. Votes are
- * GitHub reactions; comments are GitHub comments and require a GitHub account.
+ * giscus provides the GitHub sign-in, inline comments and the 👍/👎 reaction
+ * bar. The score and comment count come from the registry's generated
+ * reviews/index.json, which is refreshed by GitHub Actions.
+ *
+ * There is deliberately no AI layer, ranking model or tracking.
  */
 (() => {
   "use strict";
 
   const INDEX_URL =
     "https://raw.githubusercontent.com/free-domain-name/registry/main/reviews/index.json";
-  const ISSUE_API =
-    "https://api.github.com/repos/free-domain-name/registry/issues";
-  const INDEX_CACHE_KEY = "fdn.stumble.index.v1";
+  const INDEX_CACHE_KEY = "fdn.stumble.index.v2";
   const INDEX_CACHE_TTL = 5 * 60 * 1000;
-  const MAX_COMMENT_LENGTH = 520;
+  const GISCUS_ORIGIN = "https://giscus.app";
+
+  const GISCUS = {
+    repo: "free-domain-name/registry",
+    repoId: "R_kgDOVp0scg",
+    category: "General",
+    categoryId: "DIC_kwDOVp0scs4DK_ld",
+    mapping: "specific",
+    strict: "0",
+    reactionsEnabled: "1",
+    emitMetadata: "1",
+    inputPosition: "top",
+    lang: "en",
+    loading: "lazy",
+  };
 
   const domainEl = document.querySelector("#stumbleDomain");
   const targetEl = document.querySelector("#stumbleTarget");
@@ -24,16 +39,17 @@
   const votesEl = document.querySelector("#stumbleVotes");
   const commentsEl = document.querySelector("#stumbleComments");
   const scoreBarEl = document.querySelector("#stumbleScoreBar");
-  const reviewEl = document.querySelector("#stumbleReview");
   const visitEl = document.querySelector("#stumbleVisit");
   const nextEl = document.querySelector("#stumbleNext");
-  const commentsListEl = document.querySelector("#stumbleCommentList");
-  const allCommentsEl = document.querySelector("#stumbleAllComments");
+  const voteUpEl = document.querySelector("#stumbleVoteUp");
+  const voteDownEl = document.querySelector("#stumbleVoteDown");
+  const discussionLinkEl = document.querySelector("#stumbleDiscussionLink");
+  const giscusThreadEl = document.querySelector("#giscusThread");
+  const giscusFallbackEl = document.querySelector("#giscusFallback");
+  const threadEl = document.querySelector("#stumbleThread");
 
-  const commentCache = new Map();
   let entries = [];
   let current = null;
-  let requestId = 0;
 
   function readIndexCache() {
     try {
@@ -123,10 +139,12 @@
     }
   }
 
-  function reviewUrl(value) {
+  function discussionUrl(value) {
     const url = httpsUrl(value);
     if (!url) return null;
-    return /^https:\/\/github\.com\/free-domain-name\/registry\/issues\/\d+$/.test(url)
+    return /^https:\/\/github\.com\/free-domain-name\/registry\/discussions\/\d+$/.test(
+      url,
+    )
       ? url
       : null;
   }
@@ -145,173 +163,120 @@
     return count.toLocaleString();
   }
 
-  function shortComment(value) {
-    const text = String(value ?? "").replace(/\r\n/g, "\n").trim();
-    if (text.length <= MAX_COMMENT_LENGTH) return text;
-    return `${text.slice(0, MAX_COMMENT_LENGTH).trimEnd()}…`;
-  }
-
-  function commentDate(value) {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return "recently";
-    return date.toLocaleDateString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  }
-
-  function clear(element) {
-    while (element.firstChild) element.removeChild(element.firstChild);
-  }
-
-  function message(text, href, label) {
-    const paragraph = document.createElement("p");
-    paragraph.className = "stumble-muted";
-    paragraph.textContent = text;
-    if (href && label) {
-      paragraph.append(" ");
-      const link = document.createElement("a");
-      link.href = href;
-      link.target = "_blank";
-      link.rel = "noreferrer";
-      link.textContent = label;
-      paragraph.append(link);
-    }
-    return paragraph;
-  }
-
-  function renderComments(entry, token, comments, error) {
-    if (token !== requestId || entry.domain !== current?.domain) return;
-
-    clear(commentsListEl);
-    if (!entry.issue) {
-      commentsListEl.append(
-        message(
-          "This name does not have a review thread yet.",
-          "https://github.com/free-domain-name/registry/issues/new",
-          "Open a review on GitHub →",
-        ),
-      );
-      return;
-    }
-
-    if (error) {
-      commentsListEl.append(
-        message(
-          "Comments could not be loaded here. The conversation is still on GitHub.",
-          entry.url,
-          "Read the thread →",
-        ),
-      );
-      return;
-    }
-
-    if (!comments.length) {
-      commentsListEl.append(
-        message(
-          "No comments yet. Be the first human to review this name.",
-          entry.url,
-          "Open the thread →",
-        ),
-      );
-      return;
-    }
-
-    for (const comment of comments) {
-      const article = document.createElement("article");
-      article.className = "stumble-comment";
-
-      const meta = document.createElement("div");
-      meta.className = "stumble-comment-meta";
-
-      const author = document.createElement("a");
-      const userUrl = httpsUrl(comment?.user?.html_url);
-      author.href = userUrl || entry.url;
-      author.target = "_blank";
-      author.rel = "noreferrer";
-      author.textContent = `@${comment?.user?.login || "someone"}`;
-
-      const time = document.createElement("time");
-      time.dateTime = comment?.created_at || "";
-      time.textContent = commentDate(comment?.created_at);
-
-      meta.append(author, time);
-
-      const body = document.createElement("p");
-      body.className = "stumble-comment-body";
-      body.textContent = shortComment(comment?.body) || "(empty comment)";
-
-      const link = document.createElement("a");
-      link.className = "stumble-comment-link";
-      link.href = httpsUrl(comment?.html_url) || entry.url;
-      link.target = "_blank";
-      link.rel = "noreferrer";
-      link.textContent = "View on GitHub →";
-
-      article.append(meta, body, link);
-      commentsListEl.append(article);
-    }
-  }
-
-  async function loadComments(entry, token) {
-    if (!entry.issue) {
-      renderComments(entry, token, [], null);
-      return;
-    }
-
-    const cached = commentCache.get(entry.issue);
-    if (cached) {
-      renderComments(entry, token, cached, null);
-      return;
-    }
-
-    try {
-      const response = await fetch(
-        `${ISSUE_API}/${encodeURIComponent(entry.issue)}/comments?per_page=100`,
-        { headers: { Accept: "application/vnd.github+json" } },
-      );
-      if (!response.ok) {
-        throw new Error(`Comments returned HTTP ${response.status}`);
-      }
-      const comments = await response.json();
-      const latest = Array.isArray(comments) ? comments.slice(-3).reverse() : [];
-      commentCache.set(entry.issue, latest);
-      renderComments(entry, token, latest, null);
-    } catch {
-      renderComments(entry, token, [], new Error("comments unavailable"));
-    }
-  }
-
-  function render(entry) {
-    if (!entry) return;
-
-    current = entry;
-    const token = ++requestId;
-    const reviewIssueUrl = reviewUrl(entry.url);
-    const visitUrl = httpUrl(entry.target_url);
-    const votes = Number(entry.up || 0) + Number(entry.down || 0);
-    const score = Number.isFinite(entry.score) ? entry.score : null;
-
-    domainEl.textContent = entry.domain;
-    targetEl.textContent = `Registry target: ${entry.target_url}`;
+  function paintVotes(up, down, comments) {
+    const votes = up + down;
+    const score = votes === 0 ? null : Math.round((up / votes) * 100);
     scoreEl.textContent = score === null ? "—" : `${score}%`;
     scoreEl.title =
       score === null
         ? "No votes yet"
         : `${score}% positive from ${formatCount(votes)} votes`;
     votesEl.textContent = formatCount(votes);
-    commentsEl.textContent = formatCount(entry.comments);
+    commentsEl.textContent = formatCount(comments);
     scoreBarEl.style.width = `${score === null ? 0 : Math.max(0, Math.min(100, score))}%`;
+  }
 
-    if (reviewIssueUrl) {
-      reviewEl.href = reviewIssueUrl;
-      reviewEl.hidden = false;
-      allCommentsEl.href = reviewIssueUrl;
-      allCommentsEl.hidden = false;
+  function themeName() {
+    return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+  }
+
+  function applyGiscusTheme() {
+    const iframe = document.querySelector("iframe.giscus-frame");
+    if (!iframe?.contentWindow) return;
+    iframe.contentWindow.postMessage(
+      { giscus: { setConfig: { theme: themeName() } } },
+      GISCUS_ORIGIN,
+    );
+  }
+
+  function mountGiscus(entry) {
+    if (!giscusThreadEl) return;
+    giscusThreadEl.replaceChildren();
+
+    const script = document.createElement("script");
+    script.src = `${GISCUS_ORIGIN}/client.js`;
+    script.async = true;
+    script.crossOrigin = "anonymous";
+
+    const attributes = {
+      repo: GISCUS.repo,
+      "repo-id": GISCUS.repoId,
+      category: GISCUS.category,
+      "category-id": GISCUS.categoryId,
+      mapping: GISCUS.mapping,
+      term: entry.domain,
+      strict: GISCUS.strict,
+      "reactions-enabled": GISCUS.reactionsEnabled,
+      "emit-metadata": GISCUS.emitMetadata,
+      "input-position": GISCUS.inputPosition,
+      theme: themeName(),
+      lang: GISCUS.lang,
+      loading: GISCUS.loading,
+    };
+
+    for (const [key, value] of Object.entries(attributes)) {
+      script.setAttribute(`data-${key}`, value);
+    }
+    giscusThreadEl.append(script);
+
+    // Giscus reads the theme when it mounts. Apply it again after the iframe
+    // exists so a theme toggle before load is not lost.
+    window.setTimeout(applyGiscusTheme, 1200);
+  }
+
+  function focusThread() {
+    threadEl?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(() => {
+      const iframe = document.querySelector("iframe.giscus-frame");
+      if (iframe) iframe.focus();
+    }, 650);
+  }
+
+  function onGiscusMessage(event) {
+    if (event.origin !== GISCUS_ORIGIN) return;
+    const data = event.data?.giscus;
+    if (!data || !current) return;
+
+    if (data.error) {
+      giscusFallbackEl.hidden = false;
+      return;
+    }
+
+    const discussion = data.discussion;
+    if (!discussion?.reactions) return;
+
+    // Ignore late metadata from an iframe for a previous Stumble card.
+    const expected = discussionUrl(current.url);
+    if (expected && discussion.url && discussion.url !== expected) return;
+
+    const up = discussion.reactions.THUMBS_UP?.count ?? 0;
+    const down = discussion.reactions.THUMBS_DOWN?.count ?? 0;
+    paintVotes(up, down, discussion.totalCommentCount ?? 0);
+  }
+
+  function render(entry) {
+    if (!entry) return;
+
+    current = entry;
+    const reviewUrl = discussionUrl(entry.url);
+    const visitUrl = httpUrl(entry.target_url);
+
+    domainEl.textContent = entry.domain;
+    targetEl.textContent = `Registry target: ${entry.target_url}`;
+    paintVotes(Number(entry.up || 0), Number(entry.down || 0), Number(entry.comments || 0));
+
+    if (reviewUrl) {
+      discussionLinkEl.href = reviewUrl;
+      discussionLinkEl.hidden = false;
+      giscusFallbackEl.href = reviewUrl;
+      giscusFallbackEl.hidden = false;
+      voteUpEl.disabled = false;
+      voteDownEl.disabled = false;
     } else {
-      reviewEl.hidden = true;
-      allCommentsEl.hidden = true;
+      discussionLinkEl.hidden = true;
+      giscusFallbackEl.hidden = true;
+      voteUpEl.disabled = true;
+      voteDownEl.disabled = true;
     }
 
     if (visitUrl) {
@@ -329,9 +294,7 @@
     } catch {}
     document.title = `${entry.domain} — Stumble the registry`;
 
-    clear(commentsListEl);
-    commentsListEl.append(message("Loading the conversation…"));
-    void loadComments(entry, token);
+    mountGiscus(entry);
   }
 
   function renderFatalError(error) {
@@ -343,25 +306,37 @@
     votesEl.textContent = "0";
     commentsEl.textContent = "0";
     scoreBarEl.style.width = "0%";
-    reviewEl.hidden = true;
+    discussionLinkEl.hidden = true;
+    giscusFallbackEl.hidden = true;
+    voteUpEl.disabled = true;
+    voteDownEl.disabled = true;
     visitEl.hidden = true;
-    allCommentsEl.hidden = true;
     nextEl.disabled = true;
-
-    clear(commentsListEl);
-    commentsListEl.append(
-      message(
-        "Try again in a moment, or browse the registry directly.",
-        "https://github.com/free-domain-name/registry",
-        "Open the registry →",
-      ),
-    );
+    giscusThreadEl.replaceChildren();
+    const paragraph = document.createElement("p");
+    paragraph.className = "stumble-muted";
+    paragraph.textContent = "Try again in a moment, or browse the registry directly.";
+    const link = document.createElement("a");
+    link.href = "https://github.com/free-domain-name/registry";
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.textContent = "Open the registry →";
+    paragraph.append(" ", link);
+    giscusThreadEl.append(paragraph);
     console.error(error);
   }
 
   nextEl?.addEventListener("click", () => {
     if (entries.length) render(pick());
   });
+  voteUpEl?.addEventListener("click", focusThread);
+  voteDownEl?.addEventListener("click", focusThread);
+
+  new MutationObserver(applyGiscusTheme).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  });
+  window.addEventListener("message", onGiscusMessage);
 
   (async () => {
     try {

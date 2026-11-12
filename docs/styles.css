@@ -2693,8 +2693,26 @@ kbd {
 .stumble-actions {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 10px;
   margin-top: 26px;
+}
+
+.stumble-vote-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stumble-vote-button {
+  min-width: 126px;
+}
+
+.stumble-vote-note {
+  margin-top: 13px;
+  color: var(--faint);
+  font-size: 10px;
+  line-height: 1.6;
 }
 
 .stumble-warning {
@@ -2798,6 +2816,41 @@ kbd {
 .stumble-comments-head > a:hover {
   color: var(--text);
   text-decoration-color: var(--accent);
+}
+
+.stumble-thread-note {
+  max-width: 74ch;
+  margin-bottom: 18px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+#giscusThread {
+  min-height: 220px;
+  padding: 6px 0;
+}
+
+#giscusThread iframe {
+  width: 100%;
+  border: 0;
+}
+
+.stumble-giscus-fallback {
+  margin-top: 14px;
+  color: var(--faint);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.stumble-giscus-fallback a {
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.stumble-giscus-fallback a:hover {
+  color: var(--text);
 }
 
 .comment-list {
@@ -2942,6 +2995,14 @@ kbd {
 
   .stumble-actions .button {
     flex: 1 1 100%;
+  }
+
+  .stumble-vote-buttons {
+    width: 100%;
+  }
+
+  .stumble-vote-button {
+    flex: 1 1 0;
   }
 
   .stumble-score-row {

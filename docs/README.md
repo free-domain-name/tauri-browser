@@ -46,12 +46,16 @@ toggled. Keep both files for every skin when adding a new one.
 
 ## Editing notes
 
-- The site uses system fonts and local images only. Do not add analytics,
-  remote fonts or third-party scripts without a privacy review.
-- `stumble.html` / `stumble.js` read the public
-  `reviews/index.json` snapshot from the registry and public GitHub issue
-  comments. They never post comments or votes from the website; those actions
-  happen on GitHub. The page has no analytics or tracking.
+- The site uses system fonts and local images. Do not add analytics, remote
+  fonts or additional third-party scripts without a privacy review.
+- `stumble.html` / `stumble.js` read the public `reviews/index.json` snapshot
+  from the registry and embed the matching GitHub Discussion with
+  [giscus](https://giscus.app). giscus loads a GitHub-backed iframe from
+  `giscus.app`; GitHub sign-in and comments happen inside that iframe. The page
+  itself never posts comments or votes and has no analytics or tracking.
+- The giscus app must be installed once on `free-domain-name/registry`, and the
+  registry must have Discussions enabled, for the inline thread to load. The
+  repository root has a `giscus.json` origin allowlist.
 - `site.js` is dependency-free and handles the theme, screenshot switching,
   skin lightbox, copy button and mobile menu closing.
 - Keep the disclaimer section and the no-AI community policy visible when

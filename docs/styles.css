@@ -2853,70 +2853,6 @@ kbd {
   color: var(--text);
 }
 
-.comment-list {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.stumble-comment {
-  display: flex;
-  flex-direction: column;
-  min-height: 160px;
-  padding: 17px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--surface) 58%, transparent);
-}
-
-.stumble-comment-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 11px;
-  font-family: var(--mono);
-  font-size: 9px;
-}
-
-.stumble-comment-meta a {
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stumble-comment-meta a:hover {
-  color: var(--accent);
-}
-
-.stumble-comment-meta time {
-  flex: 0 0 auto;
-  color: var(--faint);
-}
-
-.stumble-comment-body {
-  flex: 1;
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.65;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.stumble-comment-link {
-  width: fit-content;
-  margin-top: 14px;
-  color: var(--faint);
-  font-size: 9px;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-
-.stumble-comment-link:hover {
-  color: var(--accent);
-}
-
 .stumble-muted {
   color: var(--faint);
   font-size: 11px;
@@ -2958,7 +2894,6 @@ kbd {
 
 @media (max-width: 900px) {
   .stumble-layout,
-  .comment-list,
   .stumble-policy {
     grid-template-columns: 1fr;
   }

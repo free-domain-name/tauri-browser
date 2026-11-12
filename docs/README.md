@@ -1,8 +1,8 @@
 # Free Domain Browser documentation site
 
 This folder is the static GitHub Pages site for **Free Domain Browser**. It has
-no build step and no package dependencies: `index.html`, `styles.css`, `site.js`
-and `assets/` are the whole site.
+no build step and no package dependencies: `index.html`, `stumble.html`,
+`styles.css`, `site.js`, `stumble.js` and `assets/` are the whole site.
 
 Published URL: <https://free-domain-name.github.io/tauri-browser/>
 
@@ -48,10 +48,14 @@ toggled. Keep both files for every skin when adding a new one.
 
 - The site uses system fonts and local images only. Do not add analytics,
   remote fonts or third-party scripts without a privacy review.
-- All navigation anchors are internal; the only external links are GitHub and
-  the registry.
+- `stumble.html` / `stumble.js` read the public
+  `reviews/index.json` snapshot from the registry and public GitHub issue
+  comments. They never post comments or votes from the website; those actions
+  happen on GitHub. The page has no analytics or tracking.
 - `site.js` is dependency-free and handles the theme, screenshot switching,
   skin lightbox, copy button and mobile menu closing.
+- Keep the disclaimer section and the no-AI community policy visible when
+  changing the Stumble or review copy.
 - Keep `docs/index.html` and `README.md` in sync when the public feature set
   changes.
 

@@ -60,6 +60,17 @@
           </button>
         </form>
 
+        <div id="review" class="review" role="group" aria-label="Community review for this registry name" hidden>
+          <button id="reviewUp" class="review-button" type="button" aria-label="Open the review thread to upvote" title="Open the inline review thread">
+            <span class="review-thumb" aria-hidden="true">👍</span>
+            <span id="reviewUpCount" class="review-count">0</span>
+          </button>
+          <button id="reviewDown" class="review-button" type="button" aria-label="Open the review thread to downvote" title="Open the inline review thread">
+            <span class="review-thumb" aria-hidden="true">👎</span>
+            <span id="reviewDownCount" class="review-count">0</span>
+          </button>
+        </div>
+
         <div class="meta">
           <span id="status" class="pill" data-source="idle" title="Resolution source">
             <span class="dot" aria-hidden="true"></span>

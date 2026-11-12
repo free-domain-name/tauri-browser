@@ -19,7 +19,7 @@ mod resolver;
 
 use std::time::Duration;
 
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 pub use resolver::NavigationOutcome;
 
@@ -65,6 +65,55 @@ fn forget_resolution(domain: String, state: tauri::State<'_, AppState>) {
 #[tauri::command]
 async fn clear_registry_cache(state: tauri::State<'_, AppState>) -> Result<(), error::AppError> {
     state.registry.clear().await
+}
+
+fn review_domain(value: &str) -> Result<String, error::AppError> {
+    let domain = value.trim().trim_end_matches('.').to_ascii_lowercase();
+    let valid = !domain.is_empty()
+        && domain.len() <= 253
+        && !domain.starts_with('.')
+        && !domain.contains("..")
+        && domain
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '.');
+
+    if !valid {
+        return Err(error::AppError::InvalidInput(
+            "invalid review domain".into(),
+        ));
+    }
+    Ok(domain)
+}
+
+/// Open the review surface in its own window.
+///
+/// The review page embeds giscus and GitHub OAuth. Keeping it in a dedicated
+/// window means a GitHub sign-in can navigate that window without replacing the
+/// browser chrome or its open tabs.
+#[tauri::command]
+fn open_review_window(app: tauri::AppHandle, domain: String) -> Result<(), error::AppError> {
+    let domain = review_domain(&domain)?;
+    let mut review_url =
+        url::Url::parse("https://free-domain-name.github.io/tauri-browser/stumble.html")?;
+    review_url.query_pairs_mut().append_pair("domain", &domain);
+
+    let window_error = |error: tauri::Error| {
+        error::AppError::InvalidInput(format!("could not open review window: {error}"))
+    };
+
+    if let Some(window) = app.get_webview_window("review") {
+        window.navigate(review_url).map_err(window_error)?;
+        let _ = window.set_focus();
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(&app, "review", WebviewUrl::External(review_url))
+        .title(format!("Review — {domain}"))
+        .inner_size(1000.0, 820.0)
+        .min_inner_size(520.0, 420.0)
+        .build()
+        .map_err(window_error)?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -127,6 +176,7 @@ pub fn run() {
             choose_resolution,
             forget_resolution,
             clear_registry_cache,
+            open_review_window,
             open_external,
             browser_info
         ])

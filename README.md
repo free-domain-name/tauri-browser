@@ -355,6 +355,10 @@ comments are normal GitHub comments inside the embedded thread. The
 `Sync community reviews` workflow. The giscus app must be installed once on the
 registry for the inline thread to load.
 
+On a registry page, the desktop app shows 👍/👎 counts in its toolbar. Clicking
+either opens a dedicated review window with the same inline thread, so a GitHub
+sign-in cannot navigate away from the browser chrome or its open tabs.
+
 **Human-written only.** No AI-generated domain lists, comments or reviews, and
 no automated bulk promotion. This is a community rule enforced by moderation,
 not a technical proof of authorship. A score is the share of positive votes
@@ -367,6 +371,9 @@ and [review rules](https://github.com/free-domain-name/registry/blob/main/review
 - The main window (local chrome) has `core:default` and `opener:default`.
   Remote pages render in a cross-origin iframe and are not granted Tauri IPC
   capabilities.
+- The review window is a separate remote webview with no IPC capability. It
+  loads the public Stumble page and keeps GitHub OAuth contained there; the
+  browser chrome and open tabs are not replaced by the sign-in flow.
 - Registry records are trusted input for routing, not for code execution: the
   proxy fetches the target over HTTP(S) and treats the body as untrusted.
 - The proxy strips `Content-Security-Policy`, `X-Frame-Options`,

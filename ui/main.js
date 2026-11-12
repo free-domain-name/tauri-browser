@@ -30,6 +30,11 @@ const els = {
   refresh: $("#refresh"),
   home: $("#home"),
   go: $("#go"),
+  review: $("#review"),
+  reviewUp: $("#reviewUp"),
+  reviewDown: $("#reviewDown"),
+  reviewUpCount: $("#reviewUpCount"),
+  reviewDownCount: $("#reviewDownCount"),
   external: $("#external"),
   clear: $("#clear"),
   settings: $("#settings"),
@@ -76,6 +81,9 @@ const els = {
 };
 
 const REGISTRY_REPO = "https://github.com/free-domain-name/registry";
+const REVIEW_INDEX_URL =
+  "https://raw.githubusercontent.com/free-domain-name/registry/main/reviews/index.json";
+const STUMBLE_URL = "https://free-domain-name.github.io/tauri-browser/stumble.html";
 
 const SKIN_META = {
   default: { label: "Default", hint: "The original clean chrome." },
@@ -120,6 +128,9 @@ const state = {
   nextId: 0,
   pending: null,
   toastTimer: null,
+  reviewIndex: null,
+  reviewIndexPromise: null,
+  reviewDomain: null,
 };
 
 let claimTarget = null;
@@ -152,6 +163,99 @@ function setStatus(source, text = LABELS[source] ?? "Ready") {
 function setBusy(busy) {
   els.progress.hidden = !busy;
   els.go.disabled = busy;
+}
+
+/* --------------------------------------------------------------- reviews */
+
+async function loadReviewIndex() {
+  if (state.reviewIndex) return state.reviewIndex;
+  if (state.reviewIndexPromise) return state.reviewIndexPromise;
+
+  state.reviewIndexPromise = fetch(REVIEW_INDEX_URL, {
+    headers: { Accept: "application/vnd.github+json" },
+  })
+    .then((response) => {
+      if (!response.ok) {
+        throw new Error(`review index returned HTTP ${response.status}`);
+      }
+      return response.json();
+    })
+    .then((data) => {
+      const index = new Map();
+      for (const entry of data?.domains ?? []) {
+        if (entry && typeof entry.domain === "string") {
+          index.set(entry.domain, entry);
+        }
+      }
+      state.reviewIndex = index;
+      return index;
+    })
+    .catch((error) => {
+      // The browser still works without the review index; simply do not show
+      // a control that cannot open a known thread.
+      console.warn("Review index unavailable:", error);
+      state.reviewIndex = new Map();
+      return state.reviewIndex;
+    })
+    .finally(() => {
+      state.reviewIndexPromise = null;
+    });
+
+  return state.reviewIndexPromise;
+}
+
+function reviewDomainFor(tab) {
+  if (!tab?.entry || tab.entry.kind !== "navigate") return null;
+  if (tab.entry.source !== "github_registry") return null;
+  return tab.entry.domain || null;
+}
+
+function updateReviewControl() {
+  const domain = reviewDomainFor(activeTab());
+  const entry = domain ? state.reviewIndex?.get(domain) : null;
+
+  if (!domain || !entry) {
+    state.reviewDomain = null;
+    els.review.hidden = true;
+    return;
+  }
+
+  state.reviewDomain = domain;
+  els.review.hidden = false;
+  els.reviewUpCount.textContent = String(Number(entry.up) || 0);
+  els.reviewDownCount.textContent = String(Number(entry.down) || 0);
+  const title = `Open the review thread for ${domain}`;
+  els.reviewUp.title = title;
+  els.reviewDown.title = title;
+  els.reviewUp.setAttribute("aria-label", `Open the review thread to upvote ${domain}`);
+  els.reviewDown.setAttribute("aria-label", `Open the review thread to downvote ${domain}`);
+}
+
+function syncReviewControl() {
+  const domain = reviewDomainFor(activeTab());
+  if (!domain) {
+    updateReviewControl();
+    return;
+  }
+  loadReviewIndex().then(updateReviewControl);
+}
+
+function openReviewWindow() {
+  const domain = state.reviewDomain;
+  if (!domain) return;
+
+  if (!invoke) {
+    toast("Reviews need the desktop app; Tauri IPC is not available.");
+    return;
+  }
+
+  invoke("open_review_window", { domain }).catch((error) => {
+    toast(String(error));
+    // The browser's built-in review window is the primary path. If it cannot
+    // be created, let the user finish in their normal browser instead.
+    const fallback = `${STUMBLE_URL}?domain=${encodeURIComponent(domain)}`;
+    invoke("open_external", { url: fallback }).catch(() => {});
+  });
 }
 
 function toast(message) {
@@ -385,6 +489,7 @@ function syncView() {
   }
   updateNav();
   renderTabs();
+  syncReviewControl();
 }
 
 function pushHistory(tab, entry) {
@@ -790,6 +895,7 @@ function onFrameMessage(event) {
     tab.title = data.title.trim().slice(0, 80);
   }
   renderTabs();
+  syncReviewControl();
 }
 
 /* -------------------------------------------------------------------- bind */
@@ -806,6 +912,8 @@ function bind() {
   els.refresh.addEventListener("click", refresh);
   els.home.addEventListener("click", showStart);
   els.external.addEventListener("click", openExternal);
+  els.reviewUp.addEventListener("click", openReviewWindow);
+  els.reviewDown.addEventListener("click", openReviewWindow);
 
   els.clear.addEventListener("click", async () => {
     try {

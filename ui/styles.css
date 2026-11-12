@@ -292,6 +292,65 @@ input {
   stroke-linejoin: round;
 }
 
+.review {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  flex: 0 0 auto;
+  height: 38px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+.review[hidden] {
+  display: none;
+}
+
+.review-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 34px;
+  height: 32px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.review-button:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+
+.review-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.review-thumb {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.review-count {
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.review-button:hover .review-count {
+  color: var(--text);
+}
+
 .omnibox {
   display: flex;
   align-items: center;
@@ -1298,6 +1357,19 @@ button.secondary:hover {
     height: 32px;
   }
 
+  .review {
+    height: 34px;
+  }
+
+  .review-button {
+    height: 28px;
+    padding: 0 5px;
+  }
+
+  .review-count {
+    display: none;
+  }
+
   .pill {
     padding: 0 8px;
     font-size: 10.5px;
@@ -1352,6 +1424,14 @@ button.secondary:hover {
   height: 27px;
   padding: 0 3px 0 8px;
   border-radius: 8px 8px 0 0;
+}
+
+:root[data-density="compact"] .review {
+  height: 32px;
+}
+
+:root[data-density="compact"] .review-button {
+  height: 26px;
 }
 
 :root[data-density="compact"] .tab-title {

@@ -22,11 +22,9 @@ use crate::error::{AppError, AppResult};
 
 /// How the frontend should render page content.
 pub const fn content_mode() -> &'static str {
-    if cfg!(desktop) {
-        "webview"
-    } else {
-        "iframe"
-    }
+    // Native desktop child webviews are disabled: they sit above the chrome
+    // and can cover the address bar. Use the classic iframe tab path again.
+    "iframe"
 }
 
 /// CSS-pixel rectangle of the content area, relative to the window viewport.

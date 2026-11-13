@@ -2238,7 +2238,7 @@ async function boot() {
       els.start.dataset.platform = info.platform;
       if (els.statusMode) {
         els.statusMode.textContent =
-          state.contentMode === "webview" ? "Desktop webview · UI 8" : "Mobile frame · UI 8";
+          state.contentMode === "webview" ? "Iframe tabs · UI 12" : "Iframe tabs · UI 12";
       }
     } catch {
       state.contentMode = "iframe";

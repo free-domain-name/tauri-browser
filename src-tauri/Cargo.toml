@@ -18,9 +18,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+tauri = { version = "2", features = ["unstable"] }
 tauri-plugin-opener = "2"
 
+anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
@@ -45,6 +46,25 @@ hickory-resolver = "0.26"
 url = "2"
 regex = "1"
 
+# Community chat transport. The relay is plain HTTP/WebSocket (no TLS in
+# front); iroh still encrypts endpoint-to-endpoint traffic.
+iroh = { version = "1.4.1", default-features = false, features = ["tls-ring"] }
+iroh-gossip = { version = "0.102.0", default-features = false, features = ["net"] }
+n0-future = "0.3"
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.8"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3.6", features = ["apple-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3.6", features = ["windows-native"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3.6", features = ["sync-secret-service", "crypto-rust"] }
+
+
 [features]
 # Kept for the Tauri CLI; the app does not need a custom protocol asset loader.
 default = []
@@ -55,3 +75,6 @@ lto = true
 opt-level = "s"
 panic = "abort"
 strip = true
+
+[dev-dependencies]
+clap = { version = "4", features = ["derive"] }

@@ -12,6 +12,8 @@
 //! * [`proxy`] serves registry destinations through the `fdn://` custom
 //!   protocol while preserving the original `Host` header.
 
+pub mod browser;
+pub mod chat;
 mod error;
 mod proxy;
 mod registry;
@@ -136,6 +138,7 @@ struct BrowserInfo {
     proxy_base: &'static str,
     registry_base: &'static str,
     platform: &'static str,
+    content_mode: &'static str,
 }
 
 #[tauri::command]
@@ -145,6 +148,7 @@ fn browser_info() -> BrowserInfo {
         proxy_base: resolver::proxy_base(),
         registry_base: registry::REGISTRY_RAW_BASE,
         platform: std::env::consts::OS,
+        content_mode: browser::content_mode(),
     }
 }
 
@@ -169,6 +173,11 @@ pub fn run() {
                 navigator,
                 http,
             });
+            app.manage(chat::ChatService::new(app.handle().clone()));
+
+            #[cfg(desktop)]
+            browser::install_menu(app)?;
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -178,7 +187,23 @@ pub fn run() {
             clear_registry_cache,
             open_review_window,
             open_external,
-            browser_info
+            browser_info,
+            browser::content_open,
+            browser::content_show,
+            browser::content_hide,
+            browser::content_set_bounds,
+            browser::content_focus,
+            browser::content_close,
+            browser::focus_chrome,
+            chat::chat_set_enabled,
+            chat::chat_snapshot,
+            chat::chat_send,
+            chat::chat_set_nickname,
+            chat::chat_confirm_age,
+            chat::chat_set_active_tab,
+            chat::chat_ignore,
+            chat::chat_unignore,
+            chat::chat_clear_local_data
         ])
         .run(tauri::generate_context!())
         .expect("error while running Free Domain Browser");

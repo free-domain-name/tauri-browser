@@ -24,3 +24,9 @@ Thumbs.db
 
 # Local tooling artifacts
 .dsh-vision-router/
+
+# Local cargo cache for sandboxed builds
+.cargo-home/
+
+# Local chat test data
+.dev-chat-data/

@@ -26,6 +26,9 @@ pub enum AppError {
 
     #[error("invalid URL: {0}")]
     Url(#[from] url::ParseError),
+
+    #[error("webview error: {0}")]
+    Webview(String),
 }
 
 impl Serialize for AppError {
@@ -37,6 +40,12 @@ impl Serialize for AppError {
 impl From<reqwest::Error> for AppError {
     fn from(error: reqwest::Error) -> Self {
         AppError::Network(error.to_string())
+    }
+}
+
+impl From<tauri::Error> for AppError {
+    fn from(error: tauri::Error) -> Self {
+        AppError::Webview(error.to_string())
     }
 }
 

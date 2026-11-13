@@ -548,7 +548,7 @@
                 <div><dt>Reload</dt><dd><kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>R</kbd></dd></div>
                 <div><dt>Cycle tabs</dt><dd><kbd>Ctrl</kbd> + <kbd>Tab</kbd></dd></div>
                 <div><dt>Appearance</dt><dd><kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>,</kbd></dd></div>
-                <div><dt>Back / forward</dt><dd><kbd>Alt</kbd> + <kbd>←</kbd>/<kbd>→</kbd></dd></div>
+                <div><dt>Back / forward</dt><dd><kbd>Cmd</kbd> + <kbd>[</kbd>/<kbd>]</kbd> · <kbd>Alt</kbd> + <kbd>←</kbd>/<kbd>→</kbd></dd></div>
               </dl>
               <p class="shortcut-note">
                 Middle-click a tab to close it. Tabs are intentionally in-memory; a restart
@@ -560,8 +560,9 @@
           <div class="tip-strip">
             <span aria-hidden="true">↗</span>
             <p>
-              A public site that sends <code>X-Frame-Options</code> may refuse to render inside
-              the content view. Use the external-open button in the toolbar for those sites.
+              On Android, a public site that sends <code>X-Frame-Options</code> may refuse to
+              render inside the content view; use the external-open button there. Desktop tabs
+              use native webviews and are not affected.
             </p>
           </div>
         </div>
@@ -857,13 +858,21 @@
                   <code>--bg</code><code>--surface</code><code>--surface-2</code><code>--text</code>
                   <code>--muted</code><code>--accent</code><code>--accent-soft</code><code>--on-accent</code>
                   <code>--radius</code><code>--sans</code><code>--mono</code>
+                  <code>--tabstrip-max-height</code><code>--toolbar-max-height</code>
+                  <code>--statusbar-height</code><code>--statusbar-max-height</code>
                 </div>
               </div>
 
               <p class="note">
-                <strong>Chrome only.</strong> Page content lives in a cross-origin iframe and is
-                never restyled. Invalid CSS is ignored by the browser; there is no script
-                execution from this editor.
+                <strong>Fixed boxes, elastic page.</strong> The tab strip, toolbar and
+                status bar keep their measured heights; the page viewport absorbs the rest.
+                Templates can tune the fixed regions with the layout tokens above.
+              </p>
+
+              <p class="note">
+                <strong>Chrome only.</strong> Page content lives in a native webview on desktop
+                (a cross-origin iframe on Android) and is never restyled. Invalid CSS is ignored
+                by the browser; there is no script execution from this editor.
               </p>
             </div>
           </div>
@@ -879,8 +888,9 @@
             </div>
             <p class="section-lede">
               The browser is a Tauri v2 app. Rust owns input parsing, the registry cache and the
-              <code>fdn://</code> proxy. The UI is vanilla HTML/CSS/JS with one iframe per tab —
-              no bundler, no framework, no build step for the chrome.
+              <code>fdn://</code> proxy. The UI is vanilla HTML/CSS/JS with one native child
+              webview per tab on desktop (an iframe on Android) — no bundler, no framework, no
+              build step for the chrome.
             </p>
           </div>
 
@@ -895,10 +905,11 @@
             </article>
             <article class="technical-card">
               <span class="technical-icon" aria-hidden="true">▣</span>
-              <h3>One iframe per tab</h3>
+              <h3>One webview per tab</h3>
               <p>
-                Multi-webview is not available on Android, so each tab owns an iframe. That keeps
-                page and form state alive when you switch tabs without a second native view.
+                Desktop tabs are native child webviews, so switching tabs keeps page and form
+                state alive and sites that block framing still load. Android has no multi-webview
+                layout, so it uses an iframe fallback.
               </p>
             </article>
             <article class="technical-card">
@@ -913,10 +924,11 @@
 
           <div class="limits-grid">
             <div class="limit-card">
-              <h3>Framing is real</h3>
+              <h3>Framing is a mobile limit</h3>
               <p>
-                Public sites that send <code>X-Frame-Options</code> or <code>frame-ancestors</code>
-                can refuse the iframe. Use the external-open button for those.
+                On Android, public sites that send <code>X-Frame-Options</code> or
+                <code>frame-ancestors</code> can refuse the iframe. Desktop tabs use native
+                webviews, so those headers do not block them.
               </p>
             </div>
             <div class="limit-card">
@@ -1048,9 +1060,11 @@ npm run dev</code></pre>
             <details>
               <summary>Why is a normal site showing a blank content area?</summary>
               <p>
-                It likely refuses to be framed. Public sites can send
+                On Android, it likely refuses to be framed. Public sites can send
                 <code>X-Frame-Options</code> or <code>frame-ancestors</code>. Use the
-                external-open button in the toolbar to load it in your system browser.
+                external-open button in the toolbar to load it in your system browser. On
+                desktop, tabs use native webviews, so framing headers do not block them; if a
+                page is blank there, check the connection and try the reload button.
               </p>
             </details>
             <details>

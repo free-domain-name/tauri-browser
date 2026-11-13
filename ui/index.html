@@ -71,12 +71,23 @@
           </button>
         </div>
 
-        <div class="meta">
-          <span id="status" class="pill" data-source="idle" title="Resolution source">
-            <span class="dot" aria-hidden="true"></span>
-            <span id="statusText">Ready</span>
-          </span>
+        <button
+          id="chatToggle"
+          class="icon chat-entry"
+          type="button"
+          aria-label="Community chat"
+          title="Community chat"
+          aria-pressed="false"
+          aria-controls="chatPanel"
+          aria-expanded="false"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 5h16v10H8l-4 4V5z" />
+            <path d="M8 9h8M8 12h5" />
+          </svg>
+        </button>
 
+        <div class="meta">
           <div class="settings-wrap">
             <button
               id="settings"
@@ -259,7 +270,10 @@
             </svg>
           </button>
         </div>
+        <div id="progress" class="progress" hidden aria-hidden="true"><span></span></div>
       </header>
+
+      <div id="notice" class="notice" role="status" hidden></div>
 
       <main class="viewport">
         <div id="frames" class="frames"></div>
@@ -305,8 +319,10 @@
             <p class="fineprint">
               Registry records are public and PR-reviewed at
               <span class="mono">github.com/free-domain-name/registry</span>.
-              Public sites that send <span class="mono">X-Frame-Options</span> may refuse to
-              render here — use the external-open button in that case.
+              Desktop tabs render in native webviews, so framing headers do not apply.
+              On the mobile build, public sites that send
+              <span class="mono">X-Frame-Options</span> may refuse to render — use the
+              external-open button there.
             </p>
           </div>
         </section>
@@ -359,8 +375,169 @@
           </div>
         </section>
 
-        <div id="progress" class="progress" hidden aria-hidden="true"><span></span></div>
+        <aside id="chatPanel" class="chat-panel" hidden aria-label="Community chat">
+          <header class="chat-head">
+            <div class="chat-heading">
+              <span id="chatDot" class="chat-dot" aria-hidden="true"></span>
+              <div>
+                <h2>Community</h2>
+                <p id="chatRoomLabel">General lobby</p>
+              </div>
+            </div>
+            <div class="chat-head-actions">
+              <button
+                id="chatSettingsBtn"
+                class="chat-head-button"
+                type="button"
+                aria-label="Chat settings"
+                title="Chat settings"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M4 7h8M16 7h4M4 12h4M12 12h8M4 17h8M16 17h4" />
+                  <circle cx="14" cy="7" r="2" />
+                  <circle cx="10" cy="12" r="2" />
+                  <circle cx="14" cy="17" r="2" />
+                </svg>
+              </button>
+              <button
+                id="chatClose"
+                class="chat-head-button"
+                type="button"
+                aria-label="Close community chat"
+                title="Close chat"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M6 6l12 12M18 6L6 18" />
+                </svg>
+              </button>
+            </div>
+          </header>
+
+          <div id="chatError" class="chat-error" role="status" hidden></div>
+
+          <section id="chatAge" class="chat-gate" hidden aria-labelledby="chatAgeTitle">
+            <span class="chat-gate-badge">18+</span>
+            <h3 id="chatAgeTitle">Community chat is for adults</h3>
+            <p>
+              The General lobby is public to everyone connected. Messages are signed so
+              readers can tell who sent them, but anyone can screenshot. History stays in this
+              session and is never uploaded.
+            </p>
+            <p class="chat-gate-fine">
+              Do not share personal details. There are no private messages in this
+              version.
+            </p>
+            <label class="chat-check">
+              <input id="chatAgeCheck" type="checkbox" />
+              <span>I am 18 or older and understand this is a public room.</span>
+            </label>
+            <button id="chatAgeConfirm" class="chat-primary" type="button" disabled>
+              Enter the lobby
+            </button>
+          </section>
+
+          <div id="chatMain" class="chat-main" hidden>
+            <div class="chat-presence">
+              <span id="chatOnline" class="chat-online">Connecting…</span>
+              <button id="chatUsersBtn" class="chat-text-button" type="button" aria-expanded="false">
+                People
+              </button>
+            </div>
+
+            <div id="chatUsers" class="chat-users" hidden></div>
+
+            <div
+              id="chatMessages"
+              class="chat-messages"
+              role="log"
+              aria-live="polite"
+              aria-relevant="additions"
+            ></div>
+
+            <form id="chatComposer" class="chat-composer" autocomplete="off">
+              <label class="chat-sr-only" for="chatText">Message the General lobby</label>
+              <textarea
+                id="chatText"
+                rows="2"
+                maxlength="500"
+                placeholder="Message the General lobby"
+              ></textarea>
+              <div class="chat-composer-row">
+                <span id="chatCount" class="chat-count">0 / 500</span>
+                <button id="chatSend" class="chat-primary" type="submit">Send</button>
+              </div>
+            </form>
+
+            <p class="chat-fineprint">
+              Signed messages. No server-side history.
+              <button id="chatSettingsLink" class="chat-text-button" type="button">
+                Settings
+              </button>
+            </p>
+          </div>
+
+          <section id="chatSettingsView" class="chat-settings" hidden aria-labelledby="chatSettingsTitle">
+            <div class="chat-settings-head">
+              <button id="chatSettingsBack" class="chat-text-button" type="button">
+                ← Back
+              </button>
+              <h3 id="chatSettingsTitle">Chat settings</h3>
+            </div>
+
+            <label class="chat-field">
+              <span>Nickname</span>
+              <input id="chatNickname" type="text" maxlength="32" spellcheck="false" />
+            </label>
+            <button id="chatNicknameSave" class="chat-secondary" type="button">
+              Save nickname
+            </button>
+
+            <dl class="chat-facts">
+              <div>
+                <dt>Fingerprint</dt>
+                <dd id="chatFingerprint">—</dd>
+              </div>
+              <div>
+                <dt>Relay</dt>
+                <dd id="chatRelay" class="chat-mono">—</dd>
+              </div>
+              <div>
+                <dt>Room</dt>
+                <dd id="chatRoomId" class="chat-mono">—</dd>
+              </div>
+            </dl>
+
+            <div class="chat-settings-block">
+              <h4>Ignored people</h4>
+              <p class="chat-fine">Ignored people are hidden from you.</p>
+              <ul id="chatIgnoreList" class="chat-ignore-list"></ul>
+              <p id="chatIgnoreEmpty" class="chat-fine">Nobody is ignored.</p>
+            </div>
+
+            <div class="chat-danger">
+              <h4>Local data</h4>
+              <p>
+                Clearing chat deletes the signing key from the system keychain and resets
+                the nickname and ignore list. The old identity cannot be recovered.
+              </p>
+              <button id="chatClear" class="chat-danger-button" type="button">
+                Clear local chat data
+              </button>
+            </div>
+          </section>
+        </aside>
+
       </main>
+
+      <footer id="statusbar" class="statusbar" aria-label="Browser status bar">
+        <span id="status" class="pill" data-source="idle" title="Resolution source">
+          <span class="dot" aria-hidden="true"></span>
+          <span id="statusText">Ready</span>
+        </span>
+        <span id="statusUrl" class="statusbar-url">Ready</span>
+        <span id="statusMode" class="statusbar-mode">Desktop webview</span>
+      </footer>
+
     </div>
 
     <div id="modal" class="modal" hidden>
@@ -393,8 +570,6 @@
         <button id="modalCancel" class="link" type="button">Cancel</button>
       </div>
     </div>
-
-    <div id="toast" class="toast" role="status" hidden></div>
 
     <script type="module" src="main.js"></script>
   </body>

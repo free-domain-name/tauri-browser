@@ -6,11 +6,13 @@
 /**
  * Browser chrome for the Free Domain Browser.
  *
- * Every tab owns its own iframe and history stack, so switching tabs keeps the
- * page (and its form state) alive. The Rust side owns resolution; this file only
- * renders the plan it receives:
+ * Every tab owns its own page view and history stack, so switching tabs keeps
+ * the page (and its form state) alive. On desktop the view is a native child
+ * webview, because sites that send `frame-ancestors` refuse to render in an
+ * iframe; mobile keeps the iframe. The Rust side owns resolution and the
+ * native views; this file only renders the plan it receives:
  *
- *   navigate     -> load `url` in the tab's iframe
+ *   navigate     -> load `url` in the tab's view
  *   unregistered -> show the claim page for a name absent everywhere
  *   conflict     -> ask the user, then call choose_resolution
  *   unavailable  -> offer a retry or an explicit public-web fallback
@@ -37,6 +39,36 @@ const els = {
   reviewDownCount: $("#reviewDownCount"),
   external: $("#external"),
   clear: $("#clear"),
+  chatToggle: $("#chatToggle"),
+  chatPanel: $("#chatPanel"),
+  chatDot: $("#chatDot"),
+  chatRoomLabel: $("#chatRoomLabel"),
+  chatClose: $("#chatClose"),
+  chatSettingsBtn: $("#chatSettingsBtn"),
+  chatError: $("#chatError"),
+  chatAge: $("#chatAge"),
+  chatAgeCheck: $("#chatAgeCheck"),
+  chatAgeConfirm: $("#chatAgeConfirm"),
+  chatMain: $("#chatMain"),
+  chatOnline: $("#chatOnline"),
+  chatUsersBtn: $("#chatUsersBtn"),
+  chatUsers: $("#chatUsers"),
+  chatMessages: $("#chatMessages"),
+  chatComposer: $("#chatComposer"),
+  chatText: $("#chatText"),
+  chatCount: $("#chatCount"),
+  chatSend: $("#chatSend"),
+  chatSettingsLink: $("#chatSettingsLink"),
+  chatSettingsView: $("#chatSettingsView"),
+  chatSettingsBack: $("#chatSettingsBack"),
+  chatNickname: $("#chatNickname"),
+  chatNicknameSave: $("#chatNicknameSave"),
+  chatFingerprint: $("#chatFingerprint"),
+  chatRelay: $("#chatRelay"),
+  chatRoomId: $("#chatRoomId"),
+  chatIgnoreList: $("#chatIgnoreList"),
+  chatIgnoreEmpty: $("#chatIgnoreEmpty"),
+  chatClear: $("#chatClear"),
   settings: $("#settings"),
   settingsMenu: $("#settingsMenu"),
   settingsClose: $("#settingsClose"),
@@ -48,6 +80,8 @@ const els = {
   clearCss: $("#clearCss"),
   frames: $("#frames"),
   tabs: $("#tabs"),
+  tabstrip: $(".tabstrip"),
+  toolbar: $(".toolbar"),
   newTab: $("#newTab"),
   start: $("#start"),
   claim: $("#claim"),
@@ -63,6 +97,9 @@ const els = {
   progress: $("#progress"),
   status: $("#status"),
   statusText: $("#statusText"),
+  statusUrl: $("#statusUrl"),
+  statusMode: $("#statusMode"),
+  statusbar: $("#statusbar"),
   schemeDot: $("#schemeDot"),
   modal: $("#modal"),
   modalIcon: $("#modalIcon"),
@@ -77,7 +114,8 @@ const els = {
   retry: $("#retry"),
   fallbackPublic: $("#fallbackPublic"),
   modalCancel: $("#modalCancel"),
-  toast: $("#toast"),
+  notice: $("#notice"),
+  viewport: $(".viewport"),
 };
 
 const REGISTRY_REPO = "https://github.com/free-domain-name/registry";
@@ -114,16 +152,29 @@ const SKIN_META = {
 };
 
 const LABELS = {
-  github_registry: "GitHub Free Registry",
-  public_icann: "Public ICANN Web",
-  conflict: "Conflict — choose",
-  unavailable: "Registry unavailable",
-  unregistered: "Name available",
+  github_registry: "Registry",
+  public_icann: "Public web",
+  conflict: "Conflict",
+  unavailable: "Unavailable",
+  unregistered: "Available",
+  idle: "Ready",
+};
+
+const LABEL_HINTS = {
+  github_registry: "Resolved through the GitHub Free Registry",
+  public_icann: "Loaded directly from the public web (ICANN DNS)",
+  conflict: "Exists in both the registry and public DNS",
+  unavailable: "The GitHub Free Registry could not be reached",
+  unregistered: "Not registered and not present in public DNS",
   idle: "Ready",
 };
 
 const state = {
   tabs: [],
+  contentMode: "iframe",
+  layoutFrame: 0,
+  layoutRetry: false,
+  lastCommand: { name: "", at: 0 },
   activeId: null,
   nextId: 0,
   pending: null,
@@ -131,6 +182,20 @@ const state = {
   reviewIndex: null,
   reviewIndexPromise: null,
   reviewDomain: null,
+  chat: {
+    enabledTabs: new Set(),
+    snapshot: null,
+    panelOpen: false,
+    settingsOpen: false,
+    usersOpen: false,
+    sending: false,
+    cooldownUntil: 0,
+    cooldownTimer: null,
+    error: "",
+    clearArmed: false,
+    clearTimer: null,
+    unlisten: [],
+  },
 };
 
 let claimTarget = null;
@@ -157,12 +222,591 @@ function displayFor(outcome) {
 function setStatus(source, text = LABELS[source] ?? "Ready") {
   els.status.dataset.source = source;
   els.statusText.textContent = text;
+  els.status.title = LABEL_HINTS[source] ?? text;
   els.schemeDot.dataset.source = source;
+}
+
+function setStatusDetail(text) {
+  if (els.statusUrl) els.statusUrl.textContent = text || "";
+  if (els.statusUrl) els.statusUrl.title = text || "";
 }
 
 function setBusy(busy) {
   els.progress.hidden = !busy;
   els.go.disabled = busy;
+}
+
+
+/* ------------------------------------------------------------- community chat */
+
+function chatTabId() {
+  return state.activeId === null ? null : String(state.activeId);
+}
+
+function chatEnabledHere() {
+  const id = chatTabId();
+  return Boolean(id && state.chat.enabledTabs.has(id));
+}
+
+function setChatError(error) {
+  if (!error) {
+    state.chat.error = "";
+    return;
+  }
+  state.chat.error =
+    typeof error === "string" ? error : error?.message || String(error);
+}
+
+async function ensureChatSnapshot(force = false) {
+  if (state.chat.snapshot && !force) return state.chat.snapshot;
+  if (!invoke) return null;
+  try {
+    state.chat.snapshot = await invoke("chat_snapshot");
+    setChatError(state.chat.snapshot?.error || "");
+  } catch (error) {
+    setChatError(error);
+  }
+  return state.chat.snapshot;
+}
+
+function syncChatToActiveTab() {
+  const enabled = chatEnabledHere();
+  els.chatToggle.setAttribute("aria-pressed", enabled ? "true" : "false");
+  els.chatToggle.setAttribute("aria-expanded", String(state.chat.panelOpen));
+  if (!enabled) {
+    state.chat.panelOpen = false;
+    state.chat.settingsOpen = false;
+    els.chatPanel.hidden = true;
+    layoutContent();
+    return;
+  }
+  state.chat.panelOpen = true;
+  els.chatPanel.hidden = false;
+  renderChat();
+  layoutContent();
+}
+
+function openChatPanel() {
+  state.chat.panelOpen = true;
+  els.chatPanel.hidden = false;
+  els.chatToggle.setAttribute("aria-expanded", "true");
+  renderChat();
+  layoutContent();
+}
+
+function hideChatPanel() {
+  state.chat.panelOpen = false;
+  state.chat.settingsOpen = false;
+  els.chatPanel.hidden = true;
+  els.chatToggle.setAttribute("aria-expanded", "false");
+  layoutContent();
+}
+
+async function toggleChat() {
+  const id = chatTabId();
+  if (!id) return;
+
+  if (state.chat.panelOpen && state.chat.enabledTabs.has(id)) {
+    await disableChat(id, { close: true });
+    return;
+  }
+  if (state.chat.enabledTabs.has(id)) {
+    openChatPanel();
+    return;
+  }
+
+  openChatPanel();
+  const snapshot = await ensureChatSnapshot();
+  if (!snapshot) {
+    renderChat();
+    return;
+  }
+  if (!snapshot.age_confirmed) {
+    renderChat();
+    return;
+  }
+  await enableChat(id);
+}
+
+async function enableChat(id) {
+  if (!invoke) {
+    setChatError("The Tauri IPC bridge was not found.");
+    renderChat();
+    return;
+  }
+  try {
+    const snapshot = await invoke("chat_set_enabled", { tabId: id, enabled: true });
+    state.chat.snapshot = snapshot;
+    state.chat.enabledTabs.add(id);
+    state.chat.panelOpen = true;
+    state.chat.error = "";
+    els.chatPanel.hidden = false;
+    renderChat();
+  } catch (error) {
+    setChatError(error);
+    renderChat();
+  }
+}
+
+async function disableChat(id, { close = false } = {}) {
+  state.chat.enabledTabs.delete(id);
+  if (invoke) {
+    try {
+      state.chat.snapshot = await invoke("chat_set_enabled", { tabId: id, enabled: false });
+    } catch (error) {
+      setChatError(error);
+    }
+  }
+  if (close && chatTabId() === id) {
+    hideChatPanel();
+  } else if (!chatEnabledHere()) {
+    hideChatPanel();
+  }
+  renderChat();
+}
+
+async function closeChat() {
+  const id = chatTabId();
+  if (id && state.chat.enabledTabs.has(id)) {
+    await disableChat(id, { close: true });
+  } else {
+    hideChatPanel();
+  }
+}
+
+async function confirmChatAge() {
+  if (!els.chatAgeCheck.checked || !invoke) return;
+  try {
+    state.chat.snapshot = await invoke("chat_confirm_age");
+    setChatError("");
+    const id = chatTabId();
+    if (id) await enableChat(id);
+  } catch (error) {
+    setChatError(error);
+    renderChat();
+  }
+}
+
+function chatCooldownLeft() {
+  return Math.max(0, state.chat.cooldownUntil - Date.now());
+}
+
+function scheduleChatCooldown() {
+  if (state.chat.cooldownTimer) {
+    clearTimeout(state.chat.cooldownTimer);
+    state.chat.cooldownTimer = null;
+  }
+  const left = chatCooldownLeft();
+  if (left <= 0) return;
+  state.chat.cooldownTimer = setTimeout(() => {
+    state.chat.cooldownTimer = null;
+    renderChat();
+  }, left + 20);
+}
+
+function updateChatCount() {
+  const count = [...els.chatText.value].length;
+  els.chatCount.textContent = `${count} / 500`;
+}
+
+function updateChatComposer(snapshot) {
+  const left = chatCooldownLeft();
+  const connected = Boolean(snapshot?.connected);
+  const blocked = !connected || state.chat.sending || left > 0;
+  els.chatSend.disabled = blocked;
+  els.chatText.disabled = !connected;
+  if (state.chat.sending) {
+    els.chatSend.textContent = "Sending…";
+  } else if (left > 0) {
+    els.chatSend.textContent = `Wait ${Math.ceil(left / 1000)}s`;
+  } else {
+    els.chatSend.textContent = "Send";
+  }
+  els.chatText.placeholder = connected
+    ? "Message the General lobby"
+    : "Connecting to the lobby…";
+  updateChatCount();
+  if (left > 0) scheduleChatCooldown();
+}
+
+async function sendChat() {
+  const text = els.chatText.value.trim();
+  const snapshot = state.chat.snapshot;
+  if (!text || !snapshot?.connected || state.chat.sending || chatCooldownLeft() > 0) {
+    return;
+  }
+  if (!invoke) return;
+
+  state.chat.sending = true;
+  updateChatComposer(snapshot);
+  try {
+    await invoke("chat_send", { text });
+    els.chatText.value = "";
+    state.chat.cooldownUntil = Date.now() + Math.max(5000, snapshot.cooldown_ms || 0);
+    setChatError("");
+  } catch (error) {
+    setChatError(error);
+  } finally {
+    state.chat.sending = false;
+    renderChat();
+  }
+}
+
+async function ignoreChatSender(sender) {
+  if (!invoke) return;
+  try {
+    state.chat.snapshot = await invoke("chat_ignore", { sender });
+    renderChat();
+  } catch (error) {
+    setChatError(error);
+    renderChat();
+  }
+}
+
+async function unignoreChatSender(sender) {
+  if (!invoke) return;
+  try {
+    state.chat.snapshot = await invoke("chat_unignore", { sender });
+    renderChat();
+  } catch (error) {
+    setChatError(error);
+    renderChat();
+  }
+}
+
+async function saveChatNickname() {
+  if (!invoke) return;
+  const nickname = els.chatNickname.value.trim();
+  try {
+    state.chat.snapshot = await invoke("chat_set_nickname", { nickname });
+    setChatError("");
+    renderChat();
+    toast("Nickname saved.");
+  } catch (error) {
+    setChatError(error);
+    renderChat();
+  }
+}
+
+function renderChatMessages(snapshot) {
+  const messages = snapshot.messages || [];
+  const atBottom =
+    els.chatMessages.scrollHeight -
+      els.chatMessages.scrollTop -
+      els.chatMessages.clientHeight <
+    48;
+  els.chatMessages.textContent = "";
+
+  if (messages.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "chat-empty";
+    empty.textContent = snapshot.connected
+      ? "No messages yet. Say hello to the lobby."
+      : "Connecting to the lobby…";
+    els.chatMessages.append(empty);
+    return;
+  }
+
+  for (const message of messages) {
+    const article = document.createElement("article");
+    article.className = "chat-message";
+    article.dataset.mine = message.mine ? "true" : "false";
+
+    const head = document.createElement("div");
+    head.className = "chat-message-head";
+
+    const name = document.createElement("span");
+    name.className = "chat-message-name";
+    name.textContent = message.nickname || "anon";
+    head.append(name);
+
+    const fp = document.createElement("span");
+    fp.className = "chat-message-fp";
+    fp.textContent = `#${message.fingerprint || "????"}`;
+    head.append(fp);
+
+    const time = document.createElement("time");
+    time.className = "chat-message-time";
+    time.dateTime = new Date(message.timestamp).toISOString();
+    time.textContent = new Date(message.timestamp).toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    head.append(time);
+
+    if (!message.mine) {
+      const ignore = document.createElement("button");
+      ignore.type = "button";
+      ignore.className = "chat-message-ignore";
+      ignore.dataset.ignore = message.sender;
+      ignore.title = `Ignore ${message.nickname || "this person"}`;
+      ignore.textContent = "Ignore";
+      head.append(ignore);
+    }
+
+    const text = document.createElement("p");
+    text.className = "chat-message-text";
+    text.textContent = message.text;
+
+    article.append(head, text);
+    els.chatMessages.append(article);
+  }
+
+  if (atBottom || snapshot.messages?.at(-1)?.mine) {
+    els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
+  }
+}
+
+function renderChatUsers(snapshot) {
+  els.chatUsersBtn.setAttribute("aria-expanded", String(state.chat.usersOpen));
+  els.chatUsers.hidden = !state.chat.usersOpen;
+  if (!state.chat.usersOpen) return;
+
+  els.chatUsers.textContent = "";
+  const users = snapshot.users || [];
+  if (users.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "chat-fine";
+    empty.textContent = "Nobody has announced presence yet.";
+    els.chatUsers.append(empty);
+    return;
+  }
+
+  for (const user of users) {
+    const row = document.createElement("div");
+    row.className = "chat-user";
+    row.dataset.ignored = String(Boolean(user.ignored));
+
+    const name = document.createElement("span");
+    name.className = "chat-user-name";
+    const strong = document.createElement("strong");
+    strong.textContent = user.nickname || "anon";
+    name.append(strong);
+    if (user.is_me) {
+      const you = document.createElement("span");
+      you.className = "chat-user-fp";
+      you.textContent = "(you)";
+      name.append(you);
+    }
+    const fp = document.createElement("span");
+    fp.className = "chat-user-fp";
+    fp.textContent = `#${user.fingerprint || "????"}`;
+    name.append(fp);
+    row.append(name);
+
+    if (!user.is_me) {
+      const action = document.createElement("button");
+      action.type = "button";
+      action.className = "chat-user-action";
+      action.dataset[user.ignored ? "unignore" : "ignore"] = user.sender;
+      action.textContent = user.ignored ? "Unignore" : "Ignore";
+      row.append(action);
+    }
+    els.chatUsers.append(row);
+  }
+}
+
+function renderChatSettings(snapshot) {
+  if (document.activeElement !== els.chatNickname) {
+    els.chatNickname.value = snapshot.nickname || "anon";
+  }
+  els.chatFingerprint.textContent = snapshot.fingerprint
+    ? `#${snapshot.fingerprint}`
+    : "—";
+  els.chatRelay.textContent = snapshot.relay_url || "—";
+  els.chatRoomId.textContent = snapshot.room || "—";
+
+  const ignored = (snapshot.users || []).filter((user) => user.ignored);
+  els.chatIgnoreList.textContent = "";
+  els.chatIgnoreEmpty.hidden = ignored.length > 0;
+  for (const user of ignored) {
+    const item = document.createElement("li");
+    const label = document.createElement("span");
+    label.textContent = `${user.nickname || "anon"} #${user.fingerprint || "????"}`;
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = "chat-text-button";
+    action.dataset.unignore = user.sender;
+    action.textContent = "Unignore";
+    item.append(label, action);
+    els.chatIgnoreList.append(item);
+  }
+
+  if (state.chat.clearArmed) {
+    els.chatClear.textContent = "Click again to erase everything";
+  } else {
+    els.chatClear.textContent = "Clear local chat data";
+  }
+}
+
+function renderChat() {
+  const snapshot = state.chat.snapshot;
+  if (!snapshot) return;
+
+  const enabled = chatEnabledHere();
+  const error = state.chat.error || snapshot.error || "";
+  els.chatError.hidden = !error;
+  els.chatError.textContent = error;
+
+  const connected = Boolean(snapshot.connected);
+  els.chatDot.dataset.state = !enabled
+    ? "idle"
+    : connected
+      ? "connected"
+      : error
+        ? "error"
+        : "connecting";
+  els.chatRoomLabel.textContent =
+    snapshot.room === "fdn:general:v1"
+      ? "General lobby"
+      : snapshot.room || "General lobby";
+  els.chatOnline.textContent = connected
+    ? `${snapshot.online || 0} online`
+    : "Connecting…";
+  els.chatOnline.dataset.connected = String(connected);
+  els.chatToggle.setAttribute("aria-pressed", enabled ? "true" : "false");
+
+  const showGate = !snapshot.age_confirmed;
+  const showSettings = !showGate && state.chat.settingsOpen;
+  els.chatAge.hidden = !showGate;
+  els.chatSettingsView.hidden = !showSettings;
+  els.chatMain.hidden = showGate || showSettings;
+  els.chatAgeConfirm.disabled = !els.chatAgeCheck.checked;
+
+  if (showGate) return;
+  if (showSettings) {
+    renderChatSettings(snapshot);
+    return;
+  }
+  renderChatMessages(snapshot);
+  renderChatUsers(snapshot);
+  updateChatComposer(snapshot);
+}
+
+function openChatSettings() {
+  state.chat.settingsOpen = true;
+  renderChat();
+}
+
+function closeChatSettings() {
+  state.chat.settingsOpen = false;
+  renderChat();
+}
+
+function resetChatClear() {
+  state.chat.clearArmed = false;
+  if (state.chat.clearTimer) {
+    clearTimeout(state.chat.clearTimer);
+    state.chat.clearTimer = null;
+  }
+  if (state.chat.snapshot) renderChatSettings(state.chat.snapshot);
+}
+
+async function clearChatData() {
+  if (!state.chat.clearArmed) {
+    state.chat.clearArmed = true;
+    state.chat.clearTimer = setTimeout(resetChatClear, 6000);
+    renderChatSettings(state.chat.snapshot);
+    return;
+  }
+  resetChatClear();
+  if (!invoke) return;
+  try {
+    state.chat.snapshot = await invoke("chat_clear_local_data");
+    state.chat.enabledTabs.clear();
+    state.chat.error = "";
+    hideChatPanel();
+    toast("Local chat data cleared.");
+  } catch (error) {
+    setChatError(error);
+    renderChat();
+  }
+}
+
+function bindChat() {
+  els.chatToggle.addEventListener("click", () => {
+    toggleChat().catch((error) => toast(String(error)));
+  });
+  els.chatClose.addEventListener("click", () => {
+    closeChat().catch((error) => toast(String(error)));
+  });
+  els.chatSettingsBtn.addEventListener("click", openChatSettings);
+  els.chatSettingsLink.addEventListener("click", openChatSettings);
+  els.chatSettingsBack.addEventListener("click", closeChatSettings);
+  els.chatAgeCheck.addEventListener("change", () => {
+    els.chatAgeConfirm.disabled = !els.chatAgeCheck.checked;
+  });
+  els.chatAgeConfirm.addEventListener("click", () => {
+    confirmChatAge().catch((error) => toast(String(error)));
+  });
+  els.chatText.addEventListener("input", updateChatCount);
+  els.chatText.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      sendChat().catch((error) => toast(String(error)));
+    }
+  });
+  els.chatComposer.addEventListener("submit", (event) => {
+    event.preventDefault();
+    sendChat().catch((error) => toast(String(error)));
+  });
+  els.chatUsersBtn.addEventListener("click", () => {
+    state.chat.usersOpen = !state.chat.usersOpen;
+    renderChat();
+  });
+  els.chatNicknameSave.addEventListener("click", () => {
+    saveChatNickname().catch((error) => toast(String(error)));
+  });
+  els.chatClear.addEventListener("click", () => {
+    clearChatData().catch((error) => toast(String(error)));
+  });
+  els.chatMessages.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-ignore]");
+    if (button) ignoreChatSender(button.dataset.ignore);
+  });
+  els.chatUsers.addEventListener("click", (event) => {
+    const ignore = event.target.closest("[data-ignore]");
+    if (ignore) {
+      ignoreChatSender(ignore.dataset.ignore);
+      return;
+    }
+    const unignore = event.target.closest("[data-unignore]");
+    if (unignore) unignoreChatSender(unignore.dataset.unignore);
+  });
+  els.chatIgnoreList.addEventListener("click", (event) => {
+    const unignore = event.target.closest("[data-unignore]");
+    if (unignore) unignoreChatSender(unignore.dataset.unignore);
+  });
+
+  const listen = tauri?.event?.listen;
+  if (!listen) return;
+  listen("chat://state", (event) => {
+    state.chat.snapshot = {
+      ...(state.chat.snapshot || {}),
+      ...(event.payload || {}),
+    };
+    setChatError(state.chat.snapshot.error || "");
+    renderChat();
+  }).then((unlisten) => state.chat.unlisten.push(unlisten)).catch(() => {});
+  listen("chat://message", (event) => {
+    const snapshot = state.chat.snapshot;
+    if (!snapshot) return;
+    snapshot.messages = snapshot.messages || [];
+    if (!snapshot.messages.some((message) => message.id === event.payload?.id)) {
+      snapshot.messages.push(event.payload);
+    }
+    renderChat();
+  }).then((unlisten) => state.chat.unlisten.push(unlisten)).catch(() => {});
+  listen("chat://presence", (event) => {
+    const snapshot = state.chat.snapshot;
+    if (!snapshot) return;
+    snapshot.users = event.payload?.users || [];
+    renderChat();
+  }).then((unlisten) => state.chat.unlisten.push(unlisten)).catch(() => {});
+  listen("chat://error", (event) => {
+    setChatError(event.payload?.message || "");
+    renderChat();
+  }).then((unlisten) => state.chat.unlisten.push(unlisten)).catch(() => {});
 }
 
 /* --------------------------------------------------------------- reviews */
@@ -259,11 +903,11 @@ function openReviewWindow() {
 }
 
 function toast(message) {
-  els.toast.textContent = message;
-  els.toast.hidden = false;
+  els.notice.textContent = message;
+  els.notice.hidden = false;
   clearTimeout(state.toastTimer);
   state.toastTimer = setTimeout(() => {
-    els.toast.hidden = true;
+    els.notice.hidden = true;
   }, 4200);
 }
 
@@ -332,6 +976,7 @@ function renderSettings() {
 function setSettingsOpen(open) {
   els.settingsMenu.hidden = !open;
   els.settings.setAttribute("aria-expanded", String(open));
+  layoutContent();
   if (!open) return;
   renderSettings();
   const selected = els.settingsMenu.querySelector('[aria-checked="true"]');
@@ -346,7 +991,101 @@ function closeSettings({ restoreFocus = false } = {}) {
 
 /* ------------------------------------------------------------------ tabs */
 
-function createFrame(tab) {
+/**
+ * Native content commands are asynchronous. Chaining them keeps create ->
+ * show -> focus -> hide in the same order even when the user is fast.
+ */
+let contentChain = Promise.resolve();
+
+function contentCall(command, args) {
+  if (!invoke) return Promise.reject(new Error("Tauri IPC is not available."));
+  const run = () => invoke(command, args);
+  const result = contentChain.then(run, run);
+  contentChain = result.catch(() => {});
+  return result;
+}
+
+/**
+ * Fixed-size browser chrome around one elastic content area.
+ *
+ * This is deliberately the same idea as Swing's BoxLayout: the tab strip,
+ * toolbar and status bar are non-growing boxes, and the viewport is the only
+ * child with `flex-grow`. Native child webviews are positioned from the
+ * *measured* viewport, never from a guessed height. `measure()` also refuses to
+ * report a usable box when the chrome has not been laid out yet, so a page can
+ * never be shown over a missing address bar.
+ */
+const chromeLayout = {
+  last: null,
+
+  measure() {
+    const tabstrip = els.tabstrip.getBoundingClientRect();
+    const toolbar = els.toolbar.getBoundingClientRect();
+    const statusbar = els.statusbar?.getBoundingClientRect();
+    const viewport = els.viewport.getBoundingClientRect();
+    const chatWidth = els.chatPanel.hidden
+      ? 0
+      : els.chatPanel.getBoundingClientRect().width;
+
+    // The viewport already excludes the fixed top boxes in CSS. Clamp it to the
+    // measured toolbar and status bar as a second line of defence: a native
+    // webview must never cover the address bar or the footer, even for a frame.
+    const top = Math.max(
+      Math.round(viewport.top),
+      Math.round(toolbar.bottom),
+      Math.round(tabstrip.bottom),
+    );
+    const statusVisible = Boolean(statusbar && statusbar.height >= 12);
+    const bottom = Math.min(
+      Math.round(viewport.bottom),
+      statusVisible ? Math.round(statusbar.top) : window.innerHeight,
+    );
+    const width = Math.max(1, Math.round(viewport.width - chatWidth));
+    const height = Math.max(1, bottom - top);
+    const valid = toolbar.height >= 20 && viewport.width > 1 && height > 1;
+
+    this.last = {
+      x: Math.max(0, Math.round(viewport.left)),
+      y: Math.max(0, top),
+      width,
+      height,
+      valid,
+      top,
+      bottom,
+      chrome: {
+        tabstrip: Math.round(tabstrip.height),
+        toolbar: Math.round(toolbar.height),
+        statusbar: statusVisible ? Math.round(statusbar.height) : 0,
+      },
+    };
+
+    document.documentElement.style.setProperty("--content-top", `${this.last.y}px`);
+    document.documentElement.style.setProperty("--content-height", `${this.last.height}px`);
+    document.documentElement.style.setProperty("--chrome-top-height", `${this.last.y}px`);
+    document.documentElement.style.setProperty(
+      "--chrome-bottom-height",
+      `${Math.max(0, window.innerHeight - bottom)}px`,
+    );
+
+    return this.last;
+  },
+
+  contentBounds() {
+    const measured = this.measure();
+    return {
+      x: measured.x,
+      y: measured.y,
+      width: measured.width,
+      height: measured.height,
+    };
+  },
+};
+
+function boundsKey(bounds) {
+  return `${bounds.x}:${bounds.y}:${bounds.width}:${bounds.height}`;
+}
+
+function iframeView(tab) {
   const frame = document.createElement("iframe");
   frame.className = "frame";
   frame.title = "Page content";
@@ -368,7 +1107,79 @@ function createFrame(tab) {
     renderTabs();
   });
   els.frames.append(frame);
-  return frame;
+
+  return {
+    kind: "iframe",
+    source: () => frame.contentWindow,
+    navigate(url, generation) {
+      // Clear first: if the next navigation fails, WebKit would otherwise leave
+      // the previous document visible and make the address change look ignored.
+      frame.src = "about:blank";
+      requestAnimationFrame(() => {
+        if (tab.generation !== generation) return;
+        frame.src = url;
+      });
+    },
+    show() {
+      frame.hidden = false;
+    },
+    hide() {
+      frame.hidden = true;
+    },
+    focus() {
+      try {
+        frame.contentWindow?.focus();
+      } catch {
+        /* cross-origin focus is best-effort */
+      }
+      return Promise.resolve();
+    },
+    destroy() {
+      frame.remove();
+    },
+  };
+}
+
+function webviewView(tab) {
+  const tabId = String(tab.id);
+  let shown = false;
+  let lastBounds = "";
+
+  const bounds = () => chromeLayout.contentBounds();
+
+  return {
+    kind: "webview",
+    source: () => null,
+    navigate(url) {
+      lastBounds = "";
+      return contentCall("content_open", { tabId, url, bounds: bounds() });
+    },
+    show(force = false) {
+      const next = bounds();
+      const key = boundsKey(next);
+      if (shown && !force && key === lastBounds) return Promise.resolve();
+      shown = true;
+      lastBounds = key;
+      return contentCall("content_show", { tabId, bounds: next });
+    },
+    hide() {
+      if (!shown) return Promise.resolve();
+      shown = false;
+      return contentCall("content_hide", { tabId });
+    },
+    focus() {
+      return contentCall("content_focus", { tabId }).catch(() => {});
+    },
+    destroy() {
+      shown = false;
+      lastBounds = "";
+      return contentCall("content_close", { tabId });
+    },
+  };
+}
+
+function createTabView(tab) {
+  return state.contentMode === "webview" ? webviewView(tab) : iframeView(tab);
 }
 
 function newTab({ activate = true } = {}) {
@@ -381,9 +1192,9 @@ function newTab({ activate = true } = {}) {
     liveUrl: null,
     loading: false,
     generation: 0,
-    frame: null,
+    view: null,
   };
-  tab.frame = createFrame(tab);
+  tab.view = createTabView(tab);
   state.tabs.push(tab);
   if (activate) {
     activateTab(tab.id);
@@ -399,22 +1210,37 @@ function activateTab(id) {
   state.activeId = id;
   setBusy(Boolean(tab.loading));
   syncView();
+  syncChatToActiveTab();
+  if (
+    tab.view.kind === "webview" &&
+    tab.entry?.kind === "navigate" &&
+    els.modal.hidden &&
+    els.settingsMenu.hidden
+  ) {
+    tab.view.focus().catch(() => {});
+  }
+  if (invoke && chatEnabledHere()) {
+    invoke("chat_set_active_tab", { tabId: String(id) }).catch(() => {});
+  }
 }
 
 function closeTab(id) {
   const index = state.tabs.findIndex((tab) => tab.id === id);
   if (index < 0) return;
+  const chatWasEnabled = state.chat.enabledTabs.has(String(id));
   const [tab] = state.tabs.splice(index, 1);
-  tab.frame.remove();
+  const closed = tab.view.destroy();
+  if (closed && typeof closed.catch === "function") closed.catch(() => {});
   if (state.tabs.length === 0) {
     newTab({ activate: true });
-    return;
-  }
-  if (state.activeId === id) {
+  } else if (state.activeId === id) {
     const next = state.tabs[Math.min(index, state.tabs.length - 1)];
     activateTab(next.id);
   } else {
     renderTabs();
+  }
+  if (chatWasEnabled) {
+    disableChat(String(id)).catch(() => {});
   }
 }
 
@@ -467,9 +1293,39 @@ function updateNav() {
   els.forward.disabled = !tab || tab.index >= tab.history.length - 1;
 }
 
+/**
+ * Native child webviews always sit above the chrome, so chrome dialogs and the
+ * chat panel cannot overlay them. Hide the active page while a dialog is open,
+ * and give the chat panel its own column instead of covering the page.
+ */
+function layoutContent() {
+  state.layoutFrame = 0;
+  const layout = chromeLayout.measure();
+  const tab = activeTab();
+  const suppressed = !els.settingsMenu.hidden || !els.modal.hidden;
+  const live = Boolean(tab && tab.entry?.kind === "navigate" && !suppressed && layout.valid);
+
+  if (!layout.valid && !state.layoutRetry) {
+    state.layoutRetry = true;
+    setTimeout(() => {
+      state.layoutRetry = false;
+      scheduleLayout();
+    }, 50);
+  }
+
+  for (const candidate of state.tabs) {
+    const action = candidate === tab && live ? candidate.view.show() : candidate.view.hide();
+    if (action && typeof action.catch === "function") action.catch(() => {});
+  }
+}
+
+function scheduleLayout() {
+  if (state.layoutFrame) return;
+  state.layoutFrame = requestAnimationFrame(layoutContent);
+}
+
 function syncView() {
   const tab = activeTab();
-  for (const candidate of state.tabs) candidate.frame.hidden = true;
   els.start.hidden = true;
   els.claim.hidden = true;
 
@@ -477,19 +1333,22 @@ function syncView() {
     els.start.hidden = false;
     els.address.value = "";
     setStatus("idle");
+    setStatusDetail("");
   } else if (tab.entry.kind === "unregistered") {
     fillClaim(tab.entry);
     els.claim.hidden = false;
     els.address.value = tab.entry.display;
     setStatus("unregistered");
+    setStatusDetail(tab.entry.display);
   } else {
-    tab.frame.hidden = false;
     els.address.value = tab.entry.display;
     setStatus(tab.entry.source, LABELS[tab.entry.source]);
+    setStatusDetail(tab.entry.display);
   }
   updateNav();
   renderTabs();
   syncReviewControl();
+  layoutContent();
 }
 
 function pushHistory(tab, entry) {
@@ -515,13 +1374,18 @@ function navigateFrame(tab, url) {
   const generation = tab.generation + 1;
   tab.generation = generation;
 
-  // Clear first: if the next navigation fails, WebKit would otherwise leave the
-  // previous document visible and make the address change look ignored.
-  tab.frame.src = "about:blank";
-  requestAnimationFrame(() => {
-    if (tab.generation !== generation) return;
-    tab.frame.src = url;
-  });
+  if (tab.view.kind === "webview") {
+    tab.view.navigate(url).catch((error) => {
+      if (tab.generation !== generation) return;
+      tab.loading = false;
+      clearTimeout(tab.loadWatchdog);
+      if (state.activeId === tab.id) setBusy(false);
+      renderTabs();
+      toast(String(error));
+    });
+  } else {
+    tab.view.navigate(url, generation);
+  }
 
   clearTimeout(tab.loadWatchdog);
   tab.loadWatchdog = setTimeout(() => {
@@ -556,7 +1420,6 @@ function showStart() {
   tab.title = "New tab";
   tab.generation += 1;
   clearTimeout(tab.loadWatchdog);
-  tab.frame.src = "about:blank";
   setBusy(false);
   syncView();
 }
@@ -603,8 +1466,8 @@ function applyOutcome(outcome, { push = true, tab = activeTab() } = {}) {
   else replaceEntry(tab, entry);
   tab.entry = entry;
   tab.title = outcome.domain;
-  activateTab(tab.id);
   navigateFrame(tab, entry.url);
+  activateTab(tab.id);
 }
 
 async function navigate(raw, { tab = activeTab(), push = true } = {}) {
@@ -645,6 +1508,9 @@ function showConflict(outcome, tab = activeTab()) {
   closeSettings();
   if (!tab) tab = newTab();
   state.pending = { tabId: tab.id, outcome };
+  // Mark the modal open before activation so the content view stays hidden
+  // during the switch instead of flashing the previous page.
+  els.modal.hidden = false;
   activateTab(tab.id);
 
   els.modalIcon.textContent = "⇄";
@@ -657,7 +1523,7 @@ function showConflict(outcome, tab = activeTab()) {
   els.publicTarget.textContent = outcome.public_url || `https://${outcome.domain}`;
   els.conflictChoices.hidden = false;
   els.unavailableActions.hidden = true;
-  els.modal.hidden = false;
+  layoutContent();
   els.address.value = displayFor(outcome);
   setStatus("conflict");
   els.chooseRegistry.focus();
@@ -667,6 +1533,7 @@ function showUnavailable(outcome, tab = activeTab()) {
   closeSettings();
   if (!tab) tab = newTab();
   state.pending = { tabId: tab.id, outcome };
+  els.modal.hidden = false;
   activateTab(tab.id);
 
   els.modalIcon.textContent = "!";
@@ -683,7 +1550,7 @@ function showUnavailable(outcome, tab = activeTab()) {
   els.conflictChoices.hidden = true;
   els.unavailableActions.hidden = false;
   els.fallbackPublic.hidden = freeNamespace;
-  els.modal.hidden = false;
+  layoutContent();
   els.address.value = displayFor(outcome);
   setStatus("unavailable");
   els.retry.focus();
@@ -857,13 +1724,7 @@ function displayForHref(href) {
   return href;
 }
 
-function onFrameMessage(event) {
-  const tab = state.tabs.find((candidate) => candidate.frame.contentWindow === event.source);
-  if (!tab) return;
-  const data = event.data;
-  if (!data || data.fdn !== "location") return;
-
-  const href = typeof data.href === "string" ? data.href : "";
+function applyLiveLocation(tab, href, title = "") {
   if (!href) return;
   tab.liveUrl = href;
 
@@ -881,21 +1742,98 @@ function onFrameMessage(event) {
     }
     tab.entry.display = display;
 
-    if (
-      tab.id === state.activeId &&
-      document.activeElement !== els.address &&
-      els.modal.hidden
-    ) {
-      els.address.value = display;
-      setStatus(tab.entry.source, LABELS[tab.entry.source]);
+    if (tab.id === state.activeId) {
+      setStatusDetail(display);
+      if (document.activeElement !== els.address && els.modal.hidden) {
+        els.address.value = display;
+        setStatus(tab.entry.source, LABELS[tab.entry.source]);
+      }
     }
   }
 
-  if (typeof data.title === "string" && data.title.trim()) {
-    tab.title = data.title.trim().slice(0, 80);
+  if (typeof title === "string" && title.trim()) {
+    tab.title = title.trim().slice(0, 80);
   }
   renderTabs();
   syncReviewControl();
+}
+
+function onFrameMessage(event) {
+  const tab = state.tabs.find(
+    (candidate) => candidate.view.source() === event.source,
+  );
+  if (!tab) return;
+  const data = event.data;
+  if (!data || data.fdn !== "location") return;
+  applyLiveLocation(tab, typeof data.href === "string" ? data.href : "", data.title);
+}
+
+/* -------------------------------------------------- native content events */
+
+function contentTab(payload) {
+  const id = Number(payload?.tab_id);
+  return Number.isFinite(id) ? tabById(id) : null;
+}
+
+function bindContentEvents() {
+  const listen = tauri?.event?.listen;
+  if (!listen) return;
+
+  listen("browser-command", (event) => {
+    runBrowserCommand(String(event.payload ?? ""));
+  }).catch(() => {});
+
+  listen("content://load", (event) => {
+    const payload = event.payload || {};
+    const tab = contentTab(payload);
+    if (!tab) return;
+    if (payload.url) applyLiveLocation(tab, String(payload.url));
+    if (payload.loading) {
+      tab.loading = true;
+      if (state.activeId === tab.id) setBusy(true);
+    } else {
+      tab.loading = false;
+      clearTimeout(tab.loadWatchdog);
+      if (state.activeId === tab.id) setBusy(false);
+    }
+    renderTabs();
+
+    // A page can finish loading after the chrome has reflowed (status text,
+    // progress bar, chat panel). Re-assert the measured box so the native view
+    // can never keep an old, taller rectangle over the toolbar or footer.
+    if (!payload.loading && tab === activeTab()) {
+      scheduleLayout();
+      requestAnimationFrame(() => {
+        if (tab === activeTab()) {
+          chromeLayout.measure();
+          tab.view.show(true).catch(() => {});
+        }
+      });
+    }
+  }).catch(() => {});
+
+  listen("content://title", (event) => {
+    const payload = event.payload || {};
+    const tab = contentTab(payload);
+    if (!tab) return;
+    const title = typeof payload.title === "string" ? payload.title.trim() : "";
+    if (!title) return;
+    tab.title = title.slice(0, 80);
+    renderTabs();
+  }).catch(() => {});
+
+  listen("content://open-tab", (event) => {
+    const url = event.payload?.url;
+    if (typeof url !== "string" || !url) return;
+    const tab = newTab({ activate: true });
+    navigate(url, { tab }).catch(() => {});
+  }).catch(() => {});
+
+  listen("content://external", (event) => {
+    const url = event.payload?.url;
+    if (typeof url !== "string" || !url) return;
+    invoke?.("open_external", { url }).catch((error) => toast(String(error)));
+  }).catch(() => {});
 }
 
 /* -------------------------------------------------------------------- bind */
@@ -1127,55 +2065,147 @@ function bind() {
         closeSettings({ restoreFocus: true });
         return;
       }
+      if (!els.chatPanel.hidden) {
+        if (state.chat.settingsOpen) {
+          closeChatSettings();
+        } else {
+          closeChat().catch(() => {});
+        }
+        return;
+      }
     }
 
     if (mod && key === "l") {
       event.preventDefault();
-      focusAddress();
+      runBrowserCommand("focus-address");
     } else if (mod && key === "t") {
       event.preventDefault();
-      newTab({ activate: true });
-      focusAddress();
+      runBrowserCommand("new-tab");
     } else if (mod && key === "w") {
       event.preventDefault();
-      closeTab(state.activeId);
+      runBrowserCommand("close-tab");
     } else if (mod && key === "r") {
       event.preventDefault();
-      refresh();
+      runBrowserCommand("reload");
     } else if (mod && key === ",") {
       event.preventDefault();
-      setSettingsOpen(els.settingsMenu.hidden);
+      runBrowserCommand("settings");
     } else if (event.ctrlKey && event.key === "Tab") {
       event.preventDefault();
-      cycleTab(event.shiftKey ? -1 : 1);
+      runBrowserCommand(event.shiftKey ? "prev-tab" : "next-tab");
     } else if (event.altKey && event.key === "ArrowLeft") {
       event.preventDefault();
-      go(-1);
+      runBrowserCommand("back");
     } else if (event.altKey && event.key === "ArrowRight") {
       event.preventDefault();
-      go(1);
+      runBrowserCommand("forward");
     }
   });
 }
 
+/**
+ * Keyboard events go to the native content webview, not to the chrome, so the
+ * native menu drives these commands and forwards them here.
+ */
+async function focusChrome() {
+  if (!invoke) return;
+  try {
+    await invoke("focus_chrome");
+  } catch {
+    /* focus is best-effort */
+  }
+}
+
+async function runBrowserCommand(command) {
+  // The native menu and the chrome's keydown handler can both see the same
+  // accelerator on some platforms. Ignore the duplicate delivery.
+  const now = performance.now();
+  if (state.lastCommand.name === command && now - state.lastCommand.at < 250) {
+    return;
+  }
+  state.lastCommand = { name: command, at: now };
+
+  switch (command) {
+    case "focus-address":
+      await focusChrome();
+      focusAddress();
+      break;
+    case "new-tab":
+      newTab({ activate: true });
+      await focusChrome();
+      focusAddress();
+      break;
+    case "close-tab":
+      closeTab(state.activeId);
+      break;
+    case "reload":
+      refresh();
+      break;
+    case "back":
+      go(-1);
+      break;
+    case "forward":
+      go(1);
+      break;
+    case "next-tab":
+      cycleTab(1);
+      break;
+    case "prev-tab":
+      cycleTab(-1);
+      break;
+    case "settings":
+      await focusChrome();
+      setSettingsOpen(els.settingsMenu.hidden);
+      break;
+    default:
+      break;
+  }
+}
+
+function watchLayout() {
+  if (typeof ResizeObserver === "function") {
+    const observer = new ResizeObserver(() => scheduleLayout());
+    for (const element of [els.tabstrip, els.toolbar, els.statusbar, els.notice, els.viewport, els.chatPanel]) {
+      if (element) observer.observe(element);
+    }
+  }
+  window.addEventListener("resize", scheduleLayout);
+  window.visualViewport?.addEventListener("resize", scheduleLayout);
+}
+
 async function boot() {
   bind();
+  bindChat();
+  bindContentEvents();
   renderSettings();
+
+  if (invoke) {
+    try {
+      const info = await invoke("browser_info");
+      state.contentMode = info.content_mode === "webview" ? "webview" : "iframe";
+      document.title = `Free Domain Browser ${info.version}`;
+      els.start.dataset.platform = info.platform;
+      if (els.statusMode) {
+        els.statusMode.textContent =
+          state.contentMode === "webview" ? "Desktop webview" : "Mobile frame";
+      }
+    } catch {
+      state.contentMode = "iframe";
+    }
+  }
+
   newTab({ activate: true });
   setStatus("idle");
+  layoutContent();
+  watchLayout();
 
   if (!invoke) {
+    if (els.statusMode) els.statusMode.textContent = "Browser preview";
     toast("Run with `npm run dev` — the Tauri IPC bridge was not found.");
     return;
   }
 
-  try {
-    const info = await invoke("browser_info");
-    document.title = `Free Domain Browser ${info.version}`;
-    els.start.dataset.platform = info.platform;
-  } catch {
-    /* non-fatal */
-  }
+  ensureChatSnapshot().catch(() => {});
 }
 
 boot();

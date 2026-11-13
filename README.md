@@ -12,9 +12,11 @@ session.
 
 Built with Tauri v2 (Rust + system webview) and a vanilla HTML/CSS/JS chrome.
 Tabs, the address bar, history and the resolution status all live in the chrome;
-each tab owns its own iframe so switching tabs keeps the page and its form state
-alive. The chrome is GPLv3, open source, and has light/dark, compact layouts,
-seven built-in skins and a custom CSS editor.
+on desktop each tab owns its own native child webview (Android uses an iframe) so
+switching tabs keeps the page and its form state alive. The chrome uses a
+BoxLayout-style split: the tab strip, toolbar and status bar are fixed, and the
+page viewport takes all remaining height. It is GPLv3, open source, and has
+light/dark, compact layouts, seven built-in skins and a custom CSS editor.
 
 > **Disclaimer:** Registry names and destinations are public third-party
 > submissions. The project does not operate, monitor or endorse them, and a
@@ -196,6 +198,7 @@ src-tauri/
     registry.rs          sharded fetcher + memory/disk cache
     resolver.rs          input parsing, registry/public plan, conflict detection
     proxy.rs             fdn:// handler, redirects, header/HTML rewriting
+    browser.rs           desktop child webviews, bounds/focus commands, native menu
     error.rs             serializable error type
 ```
 
@@ -216,21 +219,31 @@ same payload.
 ## Tabs and keyboard
 
 `Ctrl/Cmd+T` opens a tab, `Ctrl/Cmd+W` closes the active one, `Ctrl/Cmd+L`
-focuses the address bar, `Ctrl/Cmd+R` reloads, `Ctrl+Tab` cycles tabs, and
-`Alt+Left`/`Alt+Right` walk the tab's own history. Middle-clicking a tab closes
-it. Tabs are intentionally in-memory; a restart starts with one new tab.
+focuses the address bar, `Ctrl/Cmd+R` reloads, and `Ctrl+Tab` cycles tabs.
+`Cmd+[`/`Cmd+]` walk history on macOS; elsewhere use `Alt+Left`/`Alt+Right`.
+Middle-clicking a tab closes it. Tabs are intentionally in-memory; a restart
+starts with one new tab.
+
+Desktop pages are native child webviews with their own keyboard focus, so the
+shortcuts are also installed as native menu commands. The menu forwards each
+command to the chrome, which keeps the page's own text input working.
 
 The gear (or `Ctrl/Cmd+,`) opens **Appearance**:
 
 - **Theme** — System (follows the desktop), Light, or Dark.
 - **Layout** — Comfortable or Compact. Compact tightens tabs, toolbar, start
-  page and claim page without shrinking the page content itself.
+  page and claim page without shrinking the page content itself. The chrome is
+  measured as fixed top boxes, an elastic page viewport and a fixed status bar;
+  CSS templates can adjust the maximum heights with
+  `--tabstrip-max-height`, `--toolbar-max-height` and
+  `--statusbar-height`.
 - **Skin** — Default plus six built-in looks: High-Tech, Futuristic, Historic,
   Victorian, Amazon and Terminal. Every skin has a light and dark palette, so
   the theme choice still works underneath it.
 - **Write your own CSS** — a local CSS editor that applies after the selected
   skin. It can restyle the chrome, tabs, start page and settings panel; page
-  content inside the iframe is isolated and unaffected.
+  content lives in a separate native view (or iframe on Android) and is isolated
+  and unaffected.
 
 All appearance choices are stored in `localStorage` for this device and applied
 before the first paint, so a dark theme does not flash light. The menu also has a
@@ -261,12 +274,40 @@ chrome's CSS tokens:
 ```
 
 Useful selectors are `.toolbar`, `.tabstrip`, `.tab`, `.omnibox`, `.pill`,
-`.start`, `.sample` and `.settings-menu`. The main tokens are `--bg`, `--surface`,
-`--surface-2`, `--text`, `--muted`, `--accent`, `--accent-soft`, `--on-accent`,
-`--radius`, `--sans` and `--mono`. It is applied after the built-in skin and
+`.statusbar`, `.statusbar-url`, `.start`, `.sample` and `.settings-menu`. The
+main tokens are `--bg`, `--surface`, `--surface-2`, `--text`, `--muted`,
+`--accent`, `--accent-soft`, `--on-accent`, `--radius`, `--sans`, `--mono`,
+`--tabstrip-max-height`, `--toolbar-max-height`, `--statusbar-height` and
+`--statusbar-max-height`. It is applied after the built-in skin and
 wins over the skin's tokens, including its dark palette. Custom CSS is stored
 with the other appearance settings and is only interpreted by this device's
 local chrome.
+
+## Community chat
+
+Chat is off by default and opt-in per tab. The toolbar speech-bubble button
+opens a side panel in local browser chrome; remote pages never receive IPC or
+chat events. Hiding the last enabled panel drops the endpoint and stops
+traffic.
+
+The first enable requires an 18+ confirmation. Messages and presence are signed
+with an Ed25519 key stored in the OS keychain. History is in memory for this
+session only; the server stores no messages. There are no DMs in v1.
+
+The General lobby is `fdn:general:v1`. Production bootstrap defaults are
+compiled into `chat/config.rs`. Override them for development with:
+
+```bash
+FDN_CHAT_RELAY_URL=http://127.0.0.1:28443 \
+FDN_CHAT_LOBBY_ID=<server bootstrap lobby_node_id> \
+npm run dev
+```
+
+A local `chat-bootstrap.json` in the app config directory is also accepted, and
+`FDN_CHAT_LOBBY_ROOM` overrides the lobby name. Site rooms are deferred from
+v1: gossip needs an already-joined bootstrap peer, and no privacy-preserving
+discovery mechanism has been chosen. See `CHAT_PLAN2.md` §20 and
+`fdn-chatd/docs/IMPLEMENTATION.md`.
 
 ## Build
 
@@ -371,8 +412,8 @@ and [review rules](https://github.com/free-domain-name/registry/blob/main/review
 ## Security model
 
 - The main window (local chrome) has `core:default` and `opener:default`.
-  Remote pages render in a cross-origin iframe and are not granted Tauri IPC
-  capabilities.
+  Remote pages render in separate native child webviews on desktop and in
+  cross-origin iframes on Android. Neither is granted Tauri IPC capabilities.
 - The review window is a separate remote webview with no IPC capability. It
   loads the public Stumble page and keeps GitHub OAuth contained there; the
   browser chrome and open tabs are not replaced by the sign-in flow.
@@ -428,9 +469,11 @@ not suppressed.
 
 ## Known limitations (v1)
 
-- **Framing:** public sites that send `X-Frame-Options`/`frame-ancestors` refuse
-  the iframe. Use the external-open button for those. Registry destinations are
-  unaffected because the proxy strips those headers.
+- **Framing (Android only):** the Android build renders content in an iframe, so
+  public sites that send `X-Frame-Options`/`frame-ancestors` refuse to load;
+  use the external-open button there. Desktop tabs use native child webviews and
+  are not subject to `frame-ancestors`. Registry destinations are unaffected on
+  both because the proxy strips those headers.
 - **Interception scope:** only navigations that go through `fdn://` are proxied.
   A page on the public web that links to a registry name goes to the public web
   until the address bar is used again.
@@ -440,12 +483,14 @@ not suppressed.
 - **Redirects:** followed inside the proxy, up to five. The final page is served
   under the registry name, so absolute links to a different host leave the proxy
   and are not tracked in the address bar.
-- **History:** the chrome tracks address-bar navigations and registry in-page
-  navigations reported by the bridge, per tab. Link clicks on public iframes
-  cannot be observed because they are cross-origin.
-- **Tabs:** each tab is an iframe in the single webview (multi-webview is not
-  available on Android). A tab that navigates to a site which refuses framing
-  shows the browser's blank/error frame; use the external-open button.
+- **History:** the chrome tracks address-bar navigations and main-frame page
+  loads reported by the desktop webview, per tab. On Android the bridge reports
+  registry in-page navigations. Script-driven URL changes (`pushState`) do not
+  update the address bar on desktop, and link clicks inside public iframes
+  cannot be observed on Android because they are cross-origin.
+- **Tabs:** on desktop each tab is a native child webview (Tauri multiwebview)
+  with no Tauri IPC, so sites that block framing still render. Android keeps the
+  iframe fallback described above.
 - **No wildcard records:** the current registry schema is exact-name only.
 - **Session choices** are in memory and disappear when the app exits.
 

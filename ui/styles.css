@@ -889,6 +889,10 @@ input {
   position: relative;
   flex: 1 1 auto;
   min-height: 0;
+  overflow: hidden;
+  /* Clip every descendant, including accidentally fixed iframes, to the page
+     box. The native child webview is positioned separately in JS. */
+  contain: paint;
   background: var(--surface);
 }
 
@@ -896,12 +900,30 @@ input {
   position: absolute;
   inset: 0;
   z-index: 1;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  contain: strict;
+}
+
+.frames:empty {
+  display: none;
+}
+
+/* Desktop tabs render in native child webviews; the iframe layer must not
+   exist there at all, otherwise an old/blank iframe can cover the chrome. */
+:root[data-content-mode="webview"] .frames {
+  display: none;
 }
 
 .frame {
   display: block;
   width: 100%;
   height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   border: 0;
   background: #fff;
 }

@@ -2183,6 +2183,8 @@ async function boot() {
     try {
       const info = await invoke("browser_info");
       state.contentMode = info.content_mode === "webview" ? "webview" : "iframe";
+      document.documentElement.dataset.contentMode = state.contentMode;
+      els.frames.hidden = state.contentMode === "webview";
       document.title = `Free Domain Browser ${info.version}`;
       els.start.dataset.platform = info.platform;
       if (els.statusMode) {

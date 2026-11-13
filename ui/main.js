@@ -63,6 +63,19 @@ const els = {
   chatSettingsBack: $("#chatSettingsBack"),
   chatNickname: $("#chatNickname"),
   chatNicknameSave: $("#chatNicknameSave"),
+  chatProfileDescription: $("#chatProfileDescription"),
+  chatProfileGender: $("#chatProfileGender"),
+  chatProfileAge: $("#chatProfileAge"),
+  chatProfileCountry: $("#chatProfileCountry"),
+  chatProfileCity: $("#chatProfileCity"),
+  chatProfileShow: $("#chatProfileShow"),
+  chatProfileSave: $("#chatProfileSave"),
+  chatProfileStatus: $("#chatProfileStatus"),
+  chatProfileView: $("#chatProfileView"),
+  chatProfileBack: $("#chatProfileBack"),
+  chatProfileTitle: $("#chatProfileTitle"),
+  chatProfileFacts: $("#chatProfileFacts"),
+  chatProfileEmpty: $("#chatProfileEmpty"),
   chatFingerprint: $("#chatFingerprint"),
   chatRelay: $("#chatRelay"),
   chatRoomId: $("#chatRoomId"),
@@ -187,6 +200,8 @@ const state = {
     snapshot: null,
     panelOpen: false,
     settingsOpen: false,
+    profileSender: null,
+    profileDirty: false,
     usersOpen: false,
     sending: false,
     cooldownUntil: 0,
@@ -276,6 +291,8 @@ function syncChatToActiveTab() {
   if (!enabled) {
     state.chat.panelOpen = false;
     state.chat.settingsOpen = false;
+    state.chat.profileSender = null;
+    state.chat.profileDirty = false;
     els.chatPanel.hidden = true;
     layoutContent();
     return;
@@ -297,6 +314,8 @@ function openChatPanel() {
 function hideChatPanel() {
   state.chat.panelOpen = false;
   state.chat.settingsOpen = false;
+  state.chat.profileSender = null;
+  state.chat.profileDirty = false;
   els.chatPanel.hidden = true;
   els.chatToggle.setAttribute("aria-expanded", "false");
   layoutContent();
@@ -594,6 +613,15 @@ function renderChatUsers(snapshot) {
     name.append(fp);
     row.append(name);
 
+    if (user.has_profile && !user.ignored) {
+      const profile = document.createElement("button");
+      profile.type = "button";
+      profile.className = "chat-user-action";
+      profile.dataset.profile = user.sender;
+      profile.textContent = "Profile";
+      row.append(profile);
+    }
+
     if (!user.is_me) {
       const action = document.createElement("button");
       action.type = "button";
@@ -610,6 +638,27 @@ function renderChatSettings(snapshot) {
   if (document.activeElement !== els.chatNickname) {
     els.chatNickname.value = snapshot.nickname || "anon";
   }
+  const profile = snapshot.profile || {};
+  if (!state.chat.profileDirty) {
+    els.chatProfileDescription.value = profile.description || "";
+    els.chatProfileGender.value = profile.gender || "";
+    els.chatProfileAge.value = profile.age_band || "";
+    els.chatProfileCountry.value = profile.country || "";
+    els.chatProfileCity.value = profile.city || "";
+    els.chatProfileShow.checked = Boolean(snapshot.show_profile_in_rooms);
+  }
+  const profileCooldown = Number(snapshot.profile_cooldown_ms) || 0;
+  const profileShared = Boolean(snapshot.show_profile_in_rooms);
+  const profileFilled = ["description", "gender", "age_band", "country", "city"].some(
+    (field) => typeof profile[field] === "string" && profile[field].trim(),
+  );
+  els.chatProfileStatus.textContent = !profileShared
+    ? "Profile is local and not shared."
+    : !profileFilled
+      ? "Add at least one field before sharing a profile."
+      : profileCooldown > 0
+        ? `Shared profile can change again in ${Math.ceil(profileCooldown / 1000)}s.`
+        : "Profile is shared with this room.";
   els.chatFingerprint.textContent = snapshot.fingerprint
     ? `#${snapshot.fingerprint}`
     : "—";
@@ -637,6 +686,72 @@ function renderChatSettings(snapshot) {
   } else {
     els.chatClear.textContent = "Clear local chat data";
   }
+}
+
+async function saveChatProfile() {
+  if (!invoke) return;
+  const profile = {
+    description: els.chatProfileDescription.value,
+    gender: els.chatProfileGender.value,
+    age_band: els.chatProfileAge.value,
+    country: els.chatProfileCountry.value,
+    city: els.chatProfileCity.value,
+  };
+  try {
+    state.chat.snapshot = await invoke("chat_update_profile", {
+      profile,
+      showProfileInRooms: els.chatProfileShow.checked,
+    });
+    state.chat.profileDirty = false;
+    setChatError("");
+    renderChat();
+  } catch (error) {
+    setChatError(error);
+    renderChat();
+  }
+}
+
+function openChatProfile(sender) {
+  state.chat.settingsOpen = false;
+  state.chat.profileSender = sender;
+  renderChat();
+}
+
+function closeChatProfile() {
+  state.chat.profileSender = null;
+  renderChat();
+}
+
+function renderChatProfile(sender) {
+  const snapshot = state.chat.snapshot;
+  const profile = (snapshot?.profiles || []).find(
+    (item) => item.sender === sender && !item.ignored,
+  );
+  els.chatProfileFacts.textContent = "";
+  if (!profile) {
+    els.chatProfileTitle.textContent = "Profile";
+    els.chatProfileEmpty.hidden = false;
+    return;
+  }
+  const user = (snapshot?.users || []).find((item) => item.sender === sender);
+  els.chatProfileTitle.textContent = `${user?.nickname || profile.nickname || "anon"} #${profile.fingerprint || "????"}`;
+  const fields = [
+    ["Description", profile.description],
+    ["Gender", profile.gender],
+    ["Age band", profile.age_band],
+    ["Country", profile.country],
+    ["City", profile.city],
+  ].filter(([, value]) => typeof value === "string" && value.trim());
+  for (const [label, value] of fields) {
+    const row = document.createElement("div");
+    const term = document.createElement("dt");
+    term.textContent = label;
+    const detail = document.createElement("dd");
+    detail.textContent = value;
+    row.append(term, detail);
+    els.chatProfileFacts.append(row);
+  }
+  els.chatProfileEmpty.hidden = fields.length > 0;
 }
 
 function renderChat() {
@@ -668,14 +783,20 @@ function renderChat() {
 
   const showGate = !snapshot.age_confirmed;
   const showSettings = !showGate && state.chat.settingsOpen;
+  const showProfile = !showGate && Boolean(state.chat.profileSender);
   els.chatAge.hidden = !showGate;
   els.chatSettingsView.hidden = !showSettings;
-  els.chatMain.hidden = showGate || showSettings;
+  els.chatProfileView.hidden = !showProfile;
+  els.chatMain.hidden = showGate || showSettings || showProfile;
   els.chatAgeConfirm.disabled = !els.chatAgeCheck.checked;
 
   if (showGate) return;
   if (showSettings) {
     renderChatSettings(snapshot);
+    return;
+  }
+  if (showProfile) {
+    renderChatProfile(state.chat.profileSender);
     return;
   }
   renderChatMessages(snapshot);
@@ -685,6 +806,8 @@ function renderChat() {
 
 function openChatSettings() {
   state.chat.settingsOpen = true;
+  state.chat.profileSender = null;
+  state.chat.profileDirty = false;
   renderChat();
 }
 
@@ -757,6 +880,25 @@ function bindChat() {
   els.chatNicknameSave.addEventListener("click", () => {
     saveChatNickname().catch((error) => toast(String(error)));
   });
+  els.chatProfileSave.addEventListener("click", () => {
+    saveChatProfile().catch((error) => toast(String(error)));
+  });
+  for (const element of [
+    els.chatProfileDescription,
+    els.chatProfileGender,
+    els.chatProfileAge,
+    els.chatProfileCountry,
+    els.chatProfileCity,
+    els.chatProfileShow,
+  ]) {
+    element.addEventListener("input", () => {
+      state.chat.profileDirty = true;
+    });
+    element.addEventListener("change", () => {
+      state.chat.profileDirty = true;
+    });
+  }
+  els.chatProfileBack.addEventListener("click", closeChatProfile);
   els.chatClear.addEventListener("click", () => {
     clearChatData().catch((error) => toast(String(error)));
   });
@@ -765,6 +907,11 @@ function bindChat() {
     if (button) ignoreChatSender(button.dataset.ignore);
   });
   els.chatUsers.addEventListener("click", (event) => {
+    const profile = event.target.closest("[data-profile]");
+    if (profile) {
+      openChatProfile(profile.dataset.profile);
+      return;
+    }
     const ignore = event.target.closest("[data-ignore]");
     if (ignore) {
       ignoreChatSender(ignore.dataset.ignore);

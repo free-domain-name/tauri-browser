@@ -491,6 +491,51 @@
               Save nickname
             </button>
 
+            <div class="chat-settings-block">
+              <h4>Profile</h4>
+              <p class="chat-fine">
+                Optional. Shared only with the room when "show profile" is on;
+                recipients can copy it. Nothing is stored on the server.
+              </p>
+              <label class="chat-field">
+                <span>Description</span>
+                <textarea id="chatProfileDescription" maxlength="160" rows="3" placeholder="A short line about you"></textarea>
+              </label>
+              <label class="chat-field">
+                <span>Gender</span>
+                <input id="chatProfileGender" type="text" maxlength="32" spellcheck="false" placeholder="prefer not to say" />
+              </label>
+              <label class="chat-field">
+                <span>Age band</span>
+                <select id="chatProfileAge">
+                  <option value="">Not set</option>
+                  <option value="18-24">18–24</option>
+                  <option value="25-34">25–34</option>
+                  <option value="35-44">35–44</option>
+                  <option value="45-54">45–54</option>
+                  <option value="55-64">55–64</option>
+                  <option value="65+">65+</option>
+                  <option value="prefer not to say">Prefer not to say</option>
+                </select>
+              </label>
+              <div class="chat-field-pair">
+                <label class="chat-field">
+                  <span>Country</span>
+                  <input id="chatProfileCountry" type="text" maxlength="2" spellcheck="false" placeholder="GB" />
+                </label>
+                <label class="chat-field">
+                  <span>City</span>
+                  <input id="chatProfileCity" type="text" maxlength="48" spellcheck="false" placeholder="London" />
+                </label>
+              </div>
+              <label class="chat-check">
+                <input id="chatProfileShow" type="checkbox" />
+                <span>Show profile in rooms</span>
+              </label>
+              <button id="chatProfileSave" class="chat-secondary" type="button">Save profile</button>
+              <p id="chatProfileStatus" class="chat-fine"></p>
+            </div>
+
             <dl class="chat-facts">
               <div>
                 <dt>Fingerprint</dt>
@@ -523,6 +568,15 @@
                 Clear local chat data
               </button>
             </div>
+          </section>
+
+          <section id="chatProfileView" class="chat-settings" hidden aria-labelledby="chatProfileTitle">
+            <div class="chat-settings-head">
+              <button id="chatProfileBack" class="chat-text-button" type="button">← Back</button>
+              <h3 id="chatProfileTitle">Profile</h3>
+            </div>
+            <dl id="chatProfileFacts" class="chat-facts"></dl>
+            <p id="chatProfileEmpty" class="chat-fine" hidden>This person has not shared a profile.</p>
           </section>
         </aside>
 

@@ -14,6 +14,8 @@ use iroh::{EndpointId, SecretKey, Signature};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use super::profile::Profile;
+
 pub const PROTOCOL_VERSION: u8 = 1;
 pub const MAX_TEXT_CHARS: usize = 500;
 pub const MAX_NICKNAME_CHARS: usize = 32;
@@ -25,12 +27,14 @@ pub const PRESENCE_MAX_SKEW_MS: i64 = 2 * 60 * 1000;
 
 const MESSAGE_DOMAIN: &[u8] = b"fdn-chat/message/v1\0";
 const PRESENCE_DOMAIN: &[u8] = b"fdn-chat/presence/v1\0";
+const PROFILE_DOMAIN: &[u8] = b"fdn-chat/profile/v1\0";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Wire {
     Message(Message),
     Presence(Presence),
+    Profile(ProfileCard),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -58,6 +62,22 @@ pub struct Presence {
     pub sig: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProfileCard {
+    pub v: u8,
+    pub room: String,
+    pub sender: String,
+    pub nickname: String,
+    pub profile_version: u32,
+    pub timestamp: i64,
+    pub description: String,
+    pub gender: String,
+    pub age_band: String,
+    pub country: String,
+    pub city: String,
+    pub sig: String,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ProtocolError {
     #[error("invalid envelope JSON: {0}")]
@@ -82,6 +102,8 @@ pub enum ProtocolError {
     SignatureEncoding,
     #[error("signature does not verify")]
     Signature,
+    #[error("invalid profile: {0}")]
+    Profile(String),
 }
 
 impl Wire {
@@ -224,6 +246,78 @@ impl Presence {
     }
 }
 
+impl ProfileCard {
+    #[allow(clippy::too_many_arguments)]
+    pub fn create(
+        room: &str,
+        sender: EndpointId,
+        nickname: &str,
+        profile_version: u32,
+        profile: &Profile,
+    ) -> Result<Self, ProtocolError> {
+        validate_nickname(nickname)?;
+        let profile = profile.normalized();
+        profile.validate().map_err(ProtocolError::Profile)?;
+        Ok(Self {
+            v: PROTOCOL_VERSION,
+            room: room.to_string(),
+            sender: sender.to_string(),
+            nickname: nickname.trim().to_string(),
+            profile_version,
+            timestamp: now_ms(),
+            description: profile.description,
+            gender: profile.gender,
+            age_band: profile.age_band,
+            country: profile.country,
+            city: profile.city,
+            sig: String::new(),
+        })
+    }
+
+    pub fn sign(&mut self, key: &SecretKey) {
+        let signature = key.sign(&self.signing_bytes(&key.public()));
+        self.sig = hex::encode(signature.to_bytes());
+    }
+
+    pub fn verify(&self, now_ms: i64) -> Result<EndpointId, ProtocolError> {
+        if self.v != PROTOCOL_VERSION {
+            return Err(ProtocolError::Version(self.v));
+        }
+        validate_nickname(&self.nickname)?;
+        let profile = Profile {
+            description: self.description.clone(),
+            gender: self.gender.clone(),
+            age_band: self.age_band.clone(),
+            country: self.country.clone(),
+            city: self.city.clone(),
+        };
+        profile.validate().map_err(ProtocolError::Profile)?;
+        let sender = parse_sender(&self.sender)?;
+        if (now_ms - self.timestamp).abs() > MESSAGE_MAX_SKEW_MS {
+            return Err(ProtocolError::Timestamp);
+        }
+        verify_signature(&sender, &self.signing_bytes(&sender), &self.sig)?;
+        Ok(sender)
+    }
+
+    fn signing_bytes(&self, sender: &EndpointId) -> Vec<u8> {
+        let mut out = Vec::with_capacity(256 + self.description.len() + self.city.len());
+        out.extend_from_slice(PROFILE_DOMAIN);
+        out.push(self.v);
+        put_str(&mut out, &self.room);
+        out.extend_from_slice(sender.as_bytes());
+        put_str(&mut out, &self.nickname);
+        out.extend_from_slice(&self.profile_version.to_be_bytes());
+        out.extend_from_slice(&self.timestamp.to_be_bytes());
+        put_str(&mut out, &self.description);
+        put_str(&mut out, &self.gender);
+        put_str(&mut out, &self.age_band);
+        put_str(&mut out, &self.country);
+        put_str(&mut out, &self.city);
+        out
+    }
+}
+
 pub fn fingerprint(sender: &EndpointId) -> String {
     let digest = Sha256::digest(sender.as_bytes());
     hex::encode(&digest[..2])
@@ -336,8 +430,39 @@ mod tests {
                 assert_eq!(decoded.text, "hi");
                 assert_eq!(decoded.verify(now_ms()).expect("verify"), key.public());
             }
-            Wire::Presence(_) => panic!("wrong variant"),
+            Wire::Presence(_) | Wire::Profile(_) => panic!("wrong variant"),
         }
+    }
+
+    #[test]
+    fn profile_signs_and_verifies() {
+        let key = key();
+        let profile = Profile {
+            description: "hi".to_string(),
+            gender: "prefer not to say".to_string(),
+            age_band: "25-34".to_string(),
+            country: "gb".to_string(),
+            city: "London".to_string(),
+        };
+        let mut card = ProfileCard::create("fdn:general:v1", key.public(), "alex", 3, &profile)
+            .expect("create");
+        card.sign(&key);
+        assert_eq!(card.verify(now_ms()).expect("verify"), key.public());
+        assert_eq!(card.country, "GB");
+    }
+
+    #[test]
+    fn tampered_profile_is_rejected() {
+        let key = key();
+        let profile = Profile {
+            description: "hi".to_string(),
+            ..Profile::default()
+        };
+        let mut card = ProfileCard::create("fdn:general:v1", key.public(), "alex", 1, &profile)
+            .expect("create");
+        card.sign(&key);
+        card.city = "Berlin".to_string();
+        assert!(card.verify(now_ms()).is_err());
     }
 
     #[test]

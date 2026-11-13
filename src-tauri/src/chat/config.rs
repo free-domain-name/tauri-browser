@@ -16,11 +16,15 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+/// Production relay. `chat.vitrn.com` must remain a DNS-only A record: the
+/// relay speaks plain TCP/WebSocket, so a Cloudflare proxy in front of it breaks
+/// the connection.
 pub const DEFAULT_RELAY_URL: &str = "http://chat.vitrn.com:28443";
 pub const DEFAULT_LOBBY_ROOM: &str = "fdn:general:v1";
-/// Filled in when the production lobby key is generated. Empty means chat
-/// cannot start until a bootstrap file or environment override is provided.
-pub const DEFAULT_LOBBY_NODE_ID: &str = "";
+/// Production headless lobby key (fingerprint `a666`). Rotating the server key
+/// requires a client release or a local bootstrap override.
+pub const DEFAULT_LOBBY_NODE_ID: &str =
+    "17bd04876e32db57cd202ce379d59c39ec4f5f95fcdf31a0fc7e48b0c308d169";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BootstrapConfig {
@@ -93,6 +97,6 @@ mod tests {
         let config = BootstrapConfig::default();
         assert_eq!(config.relay_url, "http://chat.vitrn.com:28443");
         assert_eq!(config.lobby_room, "fdn:general:v1");
-        assert!(!config.is_configured());
+        assert!(config.is_configured());
     }
 }

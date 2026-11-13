@@ -11,6 +11,7 @@
 pub mod config;
 pub mod identity;
 pub mod policy;
+pub mod profile;
 pub mod protocol;
 pub mod room;
 pub mod settings;
@@ -35,7 +36,10 @@ use self::{
     config::BootstrapConfig,
     identity::Identity,
     policy::{LimitError, Policy},
-    protocol::{fingerprint, now_ms, Message, Presence, ProtocolError, Wire, MAX_TEXT_CHARS},
+    profile::Profile,
+    protocol::{
+        fingerprint, now_ms, Message, Presence, ProfileCard, ProtocolError, Wire, MAX_TEXT_CHARS,
+    },
     settings::{Settings, SettingsStore},
     transport::Transport,
 };
@@ -49,6 +53,7 @@ pub const EVENT_ROOMS: &str = "chat://rooms";
 const HEARTBEAT: Duration = Duration::from_secs(15);
 const PRESENCE_TTL_MS: i64 = 45_000;
 const MESSAGE_RING: usize = 200;
+const PROFILE_COOLDOWN: Duration = Duration::from_secs(5 * 60);
 
 #[derive(Debug, thiserror::Error)]
 pub enum ChatError {
@@ -60,6 +65,8 @@ pub enum ChatError {
     NotEnabled,
     #[error("invalid input: {0}")]
     Invalid(String),
+    #[error("profile updates are limited; try again in {0} ms")]
+    ProfileCooldown(u64),
     #[error("chat transport error: {0}")]
     Transport(String),
     #[error("chat protocol error: {0}")]
@@ -97,6 +104,23 @@ pub struct UserView {
     pub ignored: bool,
     pub is_me: bool,
     pub last_seen_ms: i64,
+    pub has_profile: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProfileView {
+    pub sender: String,
+    pub nickname: String,
+    pub fingerprint: String,
+    pub description: String,
+    pub gender: String,
+    pub age_band: String,
+    pub country: String,
+    pub city: String,
+    pub profile_version: u32,
+    pub received_ms: i64,
+    pub ignored: bool,
+    pub is_me: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -109,8 +133,12 @@ pub struct Snapshot {
     pub online: usize,
     pub users: Vec<UserView>,
     pub messages: Vec<MessageView>,
+    pub profiles: Vec<ProfileView>,
+    pub profile: Profile,
+    pub show_profile_in_rooms: bool,
     pub nickname: String,
     pub cooldown_ms: u64,
+    pub profile_cooldown_ms: u64,
     pub age_confirmed: bool,
     pub error: Option<String>,
     pub relay_url: String,
@@ -125,9 +153,11 @@ struct Shared {
     connected: AtomicBool,
     error: Mutex<Option<String>>,
     users: Mutex<BTreeMap<String, UserView>>,
+    profiles: Mutex<BTreeMap<String, ProfileView>>,
     messages: Mutex<VecDeque<MessageView>>,
     policy: Mutex<Policy>,
     last_noise_ms: AtomicI64,
+    last_profile_ms: AtomicI64,
 }
 
 struct Session {
@@ -149,7 +179,7 @@ pub struct ChatService {
     app: AppHandle,
     inner: tokio::sync::Mutex<Inner>,
     lifecycle: tokio::sync::Mutex<()>,
-    settings: SettingsStore,
+    settings: Arc<SettingsStore>,
     bootstrap: BootstrapConfig,
 }
 
@@ -169,7 +199,7 @@ impl ChatService {
                 error: None,
             }),
             lifecycle: tokio::sync::Mutex::new(()),
-            settings,
+            settings: Arc::new(settings),
             bootstrap,
         }
     }
@@ -264,9 +294,11 @@ impl ChatService {
             connected: AtomicBool::new(false),
             error: Mutex::new(None),
             users: Mutex::new(BTreeMap::new()),
+            profiles: Mutex::new(BTreeMap::new()),
             messages: Mutex::new(VecDeque::new()),
             policy: Mutex::new(Policy::new(settings.ignored.clone())),
             last_noise_ms: AtomicI64::new(0),
+            last_profile_ms: AtomicI64::new(0),
         });
 
         let me = UserView {
@@ -276,6 +308,7 @@ impl ChatService {
             ignored: false,
             is_me: true,
             last_seen_ms: now_ms(),
+            has_profile: false,
         };
         shared
             .users
@@ -283,10 +316,17 @@ impl ChatService {
             .expect("users lock")
             .insert(me.sender.clone(), me);
 
+        if let Err(error) =
+            broadcast_profile(&self.app, &shared, &sender, &identity, &settings).await
+        {
+            *shared.error.lock().expect("error lock") = Some(error.to_string());
+            emit_error(&self.app, &error.to_string());
+        }
+
         let receiver_task = {
             let app = self.app.clone();
             let shared = Arc::clone(&shared);
-            let settings = settings.clone();
+            let settings = Arc::clone(&self.settings);
             tokio::spawn(async move {
                 run_receiver(app, shared, receiver, settings).await;
             })
@@ -351,8 +391,12 @@ impl ChatService {
                 online: 0,
                 users: Vec::new(),
                 messages: Vec::new(),
+                profiles: Vec::new(),
+                profile: settings.profile.clone(),
+                show_profile_in_rooms: settings.show_profile_in_rooms,
                 nickname: settings.nickname.clone(),
                 cooldown_ms: 0,
+                profile_cooldown_ms: 0,
                 age_confirmed: settings.age_confirmed,
                 error: inner.error.clone(),
                 relay_url: self.bootstrap.relay_url.clone(),
@@ -494,6 +538,14 @@ impl ChatService {
                 user.ignored = true;
             }
         }
+        if let Some(profile) = shared
+            .profiles
+            .lock()
+            .expect("profiles lock")
+            .get_mut(&sender.to_string())
+        {
+            profile.ignored = true;
+        }
         emit_presence(&self.app, &shared);
         emit_state(&self.app, &shared, &self.settings.get(), true);
         Ok(self.snapshot().await)
@@ -518,7 +570,70 @@ impl ChatService {
                 user.ignored = false;
             }
         }
+        if let Some(profile) = shared
+            .profiles
+            .lock()
+            .expect("profiles lock")
+            .get_mut(&sender.to_string())
+        {
+            profile.ignored = false;
+        }
         emit_presence(&self.app, &shared);
+        Ok(self.snapshot().await)
+    }
+
+    async fn update_profile(
+        &self,
+        profile: Profile,
+        show_in_rooms: bool,
+    ) -> Result<Snapshot, ChatError> {
+        let profile = profile.normalized();
+        profile.validate().map_err(ChatError::Invalid)?;
+        let session = {
+            let inner = self.inner.lock().await;
+            inner.session.as_ref().map(|session| {
+                (
+                    Arc::clone(&session.shared),
+                    session.sender.clone(),
+                    Arc::clone(&session.identity),
+                )
+            })
+        };
+        if show_in_rooms && !profile.is_empty() {
+            if let Some((shared, _, _)) = &session {
+                let left = profile_cooldown_ms(shared);
+                if left > 0 {
+                    return Err(ChatError::ProfileCooldown(left));
+                }
+            }
+        }
+
+        let next_version = self.settings.get().profile_version.wrapping_add(1).max(1);
+        let updated = self
+            .settings
+            .update(|settings| {
+                settings.profile = profile.clone();
+                settings.show_profile_in_rooms = show_in_rooms;
+                settings.profile_version = next_version;
+            })
+            .map_err(ChatError::Storage)?;
+
+        if let Some((shared, sender, identity)) = &session {
+            shared
+                .profile_version
+                .store(next_version, Ordering::Relaxed);
+            if show_in_rooms && !profile.is_empty() {
+                broadcast_profile(&self.app, shared, sender, identity, &updated).await?;
+            } else {
+                shared
+                    .profiles
+                    .lock()
+                    .expect("profiles lock")
+                    .remove(&shared.node_id.to_string());
+                mark_user_profile(shared, shared.node_id, false);
+                emit_state(&self.app, shared, &updated, true);
+            }
+        }
         Ok(self.snapshot().await)
     }
 
@@ -561,7 +676,7 @@ async fn run_receiver(
     app: AppHandle,
     shared: Arc<Shared>,
     mut receiver: iroh_gossip::api::GossipReceiver,
-    settings: Settings,
+    settings: Arc<SettingsStore>,
 ) {
     use n0_future::StreamExt;
 
@@ -580,14 +695,14 @@ async fn run_receiver(
                         shared.connected.store(true, Ordering::Relaxed);
                         *shared.error.lock().expect("error lock") = None;
                         warned = false;
-                        emit_state(&app, &shared, &settings, true);
+                        emit_state(&app, &shared, &settings.get(), true);
                     }
                     Ok(Event::NeighborDown(peer)) => {
                         neighbors.remove(&peer);
                         if neighbors.is_empty() {
                             shared.connected.store(false, Ordering::Relaxed);
                         }
-                        emit_state(&app, &shared, &settings, true);
+                        emit_state(&app, &shared, &settings.get(), true);
                     }
                     Ok(Event::Received(message)) => {
                         handle_payload(&app, &shared, &message.content, &settings);
@@ -610,16 +725,16 @@ async fn run_receiver(
                     let message = "connecting… relay has not answered yet";
                     *shared.error.lock().expect("error lock") = Some(message.to_string());
                     emit_error(&app, message);
-                    emit_state(&app, &shared, &settings, true);
+                    emit_state(&app, &shared, &settings.get(), true);
                 }
             }
         }
     }
     shared.connected.store(false, Ordering::Relaxed);
-    emit_state(&app, &shared, &settings, true);
+    emit_state(&app, &shared, &settings.get(), true);
 }
 
-fn handle_payload(app: &AppHandle, shared: &Arc<Shared>, content: &[u8], settings: &Settings) {
+fn handle_payload(app: &AppHandle, shared: &Arc<Shared>, content: &[u8], settings: &SettingsStore) {
     let wire = match Wire::decode(content) {
         Ok(wire) => wire,
         Err(error) => {
@@ -672,7 +787,7 @@ fn handle_payload(app: &AppHandle, shared: &Arc<Shared>, content: &[u8], setting
             };
             touch_user(shared, sender, &message.nickname, None);
             push_message(app, shared, view);
-            emit_state(app, shared, settings, true);
+            emit_state(app, shared, &settings.get(), true);
         }
         Wire::Presence(presence) => {
             if presence.room != shared.room {
@@ -692,7 +807,55 @@ fn handle_payload(app: &AppHandle, shared: &Arc<Shared>, content: &[u8], setting
                 .is_ignored(&sender);
             touch_user(shared, sender, &presence.nickname, Some(ignored));
             emit_presence(app, shared);
-            emit_state(app, shared, settings, true);
+            emit_state(app, shared, &settings.get(), true);
+        }
+        Wire::Profile(card) => {
+            if card.room != shared.room {
+                return;
+            }
+            let sender = match card.verify(now) {
+                Ok(sender) => sender,
+                Err(error) => {
+                    emit_error(app, &format!("dropped unsigned profile: {error}"));
+                    return;
+                }
+            };
+            let ignored = shared
+                .policy
+                .lock()
+                .expect("policy lock")
+                .is_ignored(&sender);
+            {
+                let profiles = shared.profiles.lock().expect("profiles lock");
+                if profiles
+                    .get(&sender.to_string())
+                    .is_some_and(|existing| existing.profile_version >= card.profile_version)
+                {
+                    return;
+                }
+            }
+            let view = ProfileView {
+                sender: sender.to_string(),
+                nickname: card.nickname.clone(),
+                fingerprint: fingerprint(&sender),
+                description: card.description.clone(),
+                gender: card.gender.clone(),
+                age_band: card.age_band.clone(),
+                country: card.country.clone(),
+                city: card.city.clone(),
+                profile_version: card.profile_version,
+                received_ms: now,
+                ignored,
+                is_me: sender == shared.node_id,
+            };
+            shared
+                .profiles
+                .lock()
+                .expect("profiles lock")
+                .insert(sender.to_string(), view);
+            touch_user(shared, sender, &card.nickname, Some(ignored));
+            mark_user_profile(shared, sender, true);
+            emit_state(app, shared, &settings.get(), true);
         }
     }
 }
@@ -707,6 +870,7 @@ fn touch_user(shared: &Shared, sender: EndpointId, nickname: &str, ignored: Opti
         ignored: false,
         is_me: sender == shared.node_id,
         last_seen_ms: now,
+        has_profile: false,
     });
     entry.nickname = nickname.to_string();
     entry.last_seen_ms = now;
@@ -747,20 +911,98 @@ async fn run_heartbeat(
         }
 
         let now = now_ms();
-        let changed = {
+        let (changed, active_users) = {
             let mut users = shared.users.lock().expect("users lock");
             let before = users.len();
             users.retain(|_, user| {
                 user.is_me || now.saturating_sub(user.last_seen_ms) <= PRESENCE_TTL_MS
             });
-            users.len() != before
+            (
+                users.len() != before,
+                users.keys().cloned().collect::<HashSet<_>>(),
+            )
         };
+        shared
+            .profiles
+            .lock()
+            .expect("profiles lock")
+            .retain(|sender, _| active_users.contains(sender));
         if changed {
             emit_presence(&app, &shared);
         }
 
         tokio::time::sleep(HEARTBEAT).await;
     }
+}
+
+async fn broadcast_profile(
+    app: &AppHandle,
+    shared: &Arc<Shared>,
+    sender: &GossipSender,
+    identity: &Arc<Identity>,
+    settings: &Settings,
+) -> Result<(), ChatError> {
+    if !settings.show_profile_in_rooms || settings.profile.is_empty() {
+        return Ok(());
+    }
+    let mut card = ProfileCard::create(
+        &shared.room,
+        shared.node_id,
+        &settings.nickname,
+        settings.profile_version,
+        &settings.profile,
+    )?;
+    card.sign(&identity.key);
+    let bytes = Wire::Profile(card.clone()).encode()?;
+    sender
+        .broadcast(bytes.into())
+        .await
+        .map_err(|error| ChatError::Transport(error.to_string()))?;
+    let now = now_ms();
+    shared.last_profile_ms.store(now, Ordering::Relaxed);
+    let view = ProfileView {
+        sender: shared.node_id.to_string(),
+        nickname: card.nickname,
+        fingerprint: fingerprint(&shared.node_id),
+        description: card.description,
+        gender: card.gender,
+        age_band: card.age_band,
+        country: card.country,
+        city: card.city,
+        profile_version: card.profile_version,
+        received_ms: now,
+        ignored: false,
+        is_me: true,
+    };
+    shared
+        .profiles
+        .lock()
+        .expect("profiles lock")
+        .insert(shared.node_id.to_string(), view);
+    mark_user_profile(shared, shared.node_id, true);
+    emit_state(app, shared, settings, true);
+    Ok(())
+}
+
+fn mark_user_profile(shared: &Shared, sender: EndpointId, visible: bool) {
+    if let Some(user) = shared
+        .users
+        .lock()
+        .expect("users lock")
+        .get_mut(&sender.to_string())
+    {
+        user.has_profile = visible;
+        user.last_seen_ms = now_ms();
+    }
+}
+
+fn profile_cooldown_ms(shared: &Shared) -> u64 {
+    let last = shared.last_profile_ms.load(Ordering::Relaxed);
+    if last <= 0 {
+        return 0;
+    }
+    let elapsed = now_ms().saturating_sub(last).max(0) as u64;
+    (PROFILE_COOLDOWN.as_millis() as u64).saturating_sub(elapsed)
 }
 
 fn push_message(app: &AppHandle, shared: &Shared, view: MessageView) {
@@ -813,12 +1055,22 @@ fn snapshot_from(shared: &Shared, settings: &Settings, enabled: bool) -> Snapsho
         online,
         users,
         messages,
+        profiles: shared
+            .profiles
+            .lock()
+            .expect("profiles lock")
+            .values()
+            .cloned()
+            .collect(),
+        profile: settings.profile.clone(),
+        show_profile_in_rooms: settings.show_profile_in_rooms,
         nickname: shared.nickname.lock().expect("nickname lock").clone(),
         cooldown_ms: shared
             .policy
             .lock()
             .expect("policy lock")
             .send_cooldown_ms(),
+        profile_cooldown_ms: profile_cooldown_ms(shared),
         age_confirmed: settings.age_confirmed,
         error: shared.error.lock().expect("error lock").clone(),
         relay_url: shared.relay_url.clone(),
@@ -869,6 +1121,15 @@ pub async fn chat_set_nickname(
     nickname: String,
 ) -> Result<Snapshot, ChatError> {
     service.set_nickname(nickname).await
+}
+
+#[tauri::command]
+pub async fn chat_update_profile(
+    service: State<'_, ChatService>,
+    profile: Profile,
+    show_profile_in_rooms: bool,
+) -> Result<Snapshot, ChatError> {
+    service.update_profile(profile, show_profile_in_rooms).await
 }
 
 #[tauri::command]

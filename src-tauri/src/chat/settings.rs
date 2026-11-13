@@ -14,6 +14,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use super::profile::Profile;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -43,16 +45,6 @@ impl Default for Settings {
     }
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Profile {
-    pub description: String,
-    pub gender: String,
-    pub age_band: String,
-    pub country: String,
-    pub city: String,
-}
-
 impl Settings {
     pub fn validate(&self) -> Result<(), String> {
         let nickname = self.nickname.trim();
@@ -60,34 +52,6 @@ impl Settings {
             return Err("nickname must be 1–32 characters".to_string());
         }
         self.profile.validate()
-    }
-}
-
-impl Profile {
-    pub fn validate(&self) -> Result<(), String> {
-        if self.description.chars().count() > 160 {
-            return Err("description is longer than 160 characters".to_string());
-        }
-        if self.city.chars().count() > 48 {
-            return Err("city is longer than 48 characters".to_string());
-        }
-        if self.gender.chars().count() > 32 {
-            return Err("gender is longer than 32 characters".to_string());
-        }
-        if !self.age_band.is_empty()
-            && !matches!(
-                self.age_band.as_str(),
-                "18-24" | "25-34" | "35-44" | "45-54" | "55-64" | "65+" | "prefer not to say"
-            )
-        {
-            return Err("unknown age band".to_string());
-        }
-        if !self.country.is_empty()
-            && (self.country.len() != 2 || !self.country.chars().all(|c| c.is_ascii_alphabetic()))
-        {
-            return Err("country must be a two-letter ISO code".to_string());
-        }
-        Ok(())
     }
 }
 

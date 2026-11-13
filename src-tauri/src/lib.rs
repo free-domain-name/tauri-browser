@@ -199,6 +199,7 @@ pub fn run() {
             chat::chat_snapshot,
             chat::chat_send,
             chat::chat_set_nickname,
+            chat::chat_update_profile,
             chat::chat_confirm_age,
             chat::chat_set_active_tab,
             chat::chat_ignore,

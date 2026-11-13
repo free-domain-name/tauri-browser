@@ -1,7 +1,8 @@
 # Community chat for the Tauri browser — plan v2
 
-Status: **implementation started — server, client core, and lobby panel are in
-place. v1 scope is the General lobby only; site rooms are deferred.**
+Status: **implementation started — server, client core, lobby panel and
+optional profiles are in place, and the deployed General lobby is verified. v1
+scope is the General lobby only; site rooms are deferred.**
 Decisions closed below; this file replaces `CHAT_PLAN.md` and keeps no revision
 history or superseded options.
 
@@ -236,7 +237,10 @@ caps and relay byte limits are the only limits.
 - **M2** — core chat: per-tab panel toggle, room list with General link, lobby +
   site rooms with the 3-room cap, nickname, user lists, online count,
   ignore/unignore, per-peer/duplicate/room caps, in-memory only.
-- **M3** — profiles: optional fields with 18+ gate.
+- **M3** — profiles: optional fields with 18+ gate. Implemented: signed profile
+  card, local persistence, five-minute update cooldown, in-memory received
+  profiles, settings form and per-user profile viewer. Production-lobby
+  verification remains pending the deployed `lobby_node_id`.
 - **M4** — hardening: per-IP and edge limits, relay bandwidth, packaging,
   abuse/ignore UX, load test.
 - **M5** — optional: typing, ephemeral reactions, room topic, off-by-default
@@ -263,6 +267,18 @@ caps and relay byte limits are the only limits.
   silence.
 - Profile fields stay hidden unless explicitly shared; there is no DM surface.
 - Remote pages still have no Tauri IPC access.
+
+### Verification log
+
+- 2026-11-13: `cargo test --lib` — 39 passed, 5 network tests ignored.
+- 2026-11-13: local `fdn-chatd` plus two `chat_probe` instances exchanged
+  signed messages and signed profile cards in both directions.
+- 2026-11-13: the same exchange succeeded through the production relay at
+  `89.58.37.84:28443` using a temporary room and a local lobby peer.
+- 2026-11-13: after `chat.vitrn.com` was changed to a DNS-only A record, two
+  signed probes joined the deployed General lobby, saw each other's presence,
+  verified each other's messages, and received each other's signed profile
+  cards through `http://chat.vitrn.com:28443`.
 
 ## 17. Costs
 

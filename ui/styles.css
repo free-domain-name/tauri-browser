@@ -2234,9 +2234,40 @@ button.secondary:hover {
   font: 13px/1 var(--sans);
 }
 
-.chat-field input:focus {
+.chat-field input:focus,
+.chat-field textarea:focus,
+.chat-field select:focus {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.chat-field textarea,
+.chat-field select {
+  width: 100%;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  outline: 0;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.chat-field textarea {
+  min-height: 58px;
+  resize: vertical;
+}
+
+.chat-field-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+#chatProfileFacts dd {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .chat-facts {

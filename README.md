@@ -294,13 +294,26 @@ The first enable requires an 18+ confirmation. Messages and presence are signed
 with an Ed25519 key stored in the OS keychain. History is in memory for this
 session only; the server stores no messages. There are no DMs in v1.
 
+An optional profile (description, gender, age band, country, city) is stored
+locally and shared only when "show profile in rooms" is enabled. It travels as a
+signed card, is kept in memory for the session, and is limited to one update per
+five minutes. People with a shared profile get a Profile button in the user
+list.
+
 The General lobby is `fdn:general:v1`. Production bootstrap defaults are
-compiled into `chat/config.rs`. Override them for development with:
+compiled into `chat/config.rs`: the relay is `http://chat.vitrn.com:28443` and
+the lobby node ID is the deployed key (fingerprint `a666`). `chat.vitrn.com`
+must stay a DNS-only A record to `89.58.37.84`; the relay's plain TCP port is not
+carried by a Cloudflare proxy. Override the defaults for development with:
 
 ```bash
 FDN_CHAT_RELAY_URL=http://127.0.0.1:28443 \
 FDN_CHAT_LOBBY_ID=<server bootstrap lobby_node_id> \
 npm run dev
+
+For a production smoke test, put the server's `bootstrap.json` in the app config
+directory as `chat-bootstrap.json`, or use the two `chat_probe` instances shown
+in `src-tauri/examples/chat_probe.rs`.
 ```
 
 A local `chat-bootstrap.json` in the app config directory is also accepted, and

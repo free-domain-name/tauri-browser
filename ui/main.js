@@ -1306,6 +1306,26 @@ function updateNav() {
 }
 
 /**
+ * Re-assert the native page rectangle after a load. Page load can reflow the
+ * tab title, review controls and status text; lock the view to the final boxes.
+ */
+function lockContentBox(tab) {
+  if (!tab || tab.view.kind !== "webview") return;
+  const apply = () => {
+    if (tab !== activeTab() || tab.entry?.kind !== "navigate") return;
+    if (!els.settingsMenu.hidden || !els.modal.hidden) return;
+    // Re-measure every time. The page load can change the tab title, review
+    // controls and status text; the native view must follow the final boxes.
+    chromeLayout.measure();
+    tab.view.show(true).catch(() => {});
+  };
+  apply();
+  for (const delay of [50, 150, 400, 900, 1600]) {
+    setTimeout(apply, delay);
+  }
+}
+
+/**
  * Native child webviews always sit above the chrome, so chrome dialogs and the
  * chat panel cannot overlay them. Hide the active page while a dialog is open,
  * and give the chat panel its own column instead of covering the page.
@@ -1813,14 +1833,9 @@ function bindContentEvents() {
     // A page can finish loading after the chrome has reflowed (status text,
     // progress bar, chat panel). Re-assert the measured box so the native view
     // can never keep an old, taller rectangle over the toolbar or footer.
-    if (!payload.loading && tab === activeTab()) {
+    if (tab === activeTab()) {
       scheduleLayout();
-      requestAnimationFrame(() => {
-        if (tab === activeTab()) {
-          chromeLayout.measure();
-          tab.view.show(true).catch(() => {});
-        }
-      });
+      requestAnimationFrame(() => lockContentBox(tab));
     }
   }).catch(() => {});
 

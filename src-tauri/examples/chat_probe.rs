@@ -103,6 +103,7 @@ async fn main() -> Result<()> {
             .map_err(|error| anyhow::anyhow!("send failed: {error}"))?;
     }
 
+    let heartbeat_bio = args.bio.clone();
     let heartbeat = if args.heartbeat_seconds > 0 {
         let sender = sender.clone();
         let key = identity.key.clone();
@@ -123,6 +124,23 @@ async fn main() -> Result<()> {
                 };
                 if sender.broadcast(bytes.into()).await.is_err() {
                     break;
+                }
+                if let Some(bio) = &heartbeat_bio {
+                    let profile = Profile {
+                        description: bio.clone(),
+                        ..Profile::default()
+                    };
+                    let Ok(mut card) = ProfileCard::create(&room, node_id, &nickname, 1, &profile)
+                    else {
+                        break;
+                    };
+                    card.sign(&key);
+                    let Ok(bytes) = Wire::Profile(card).encode() else {
+                        break;
+                    };
+                    if sender.broadcast(bytes.into()).await.is_err() {
+                        break;
+                    }
                 }
             }
         }))

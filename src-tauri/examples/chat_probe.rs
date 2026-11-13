@@ -46,6 +46,9 @@ struct Args {
     /// Reply to every verified message from another peer.
     #[arg(long, default_value_t = false)]
     auto_reply: bool,
+    /// Append-only file whose new lines are broadcast as chat messages.
+    #[arg(long)]
+    reply_file: Option<std::path::PathBuf>,
 }
 
 #[tokio::main]
@@ -148,6 +151,51 @@ async fn main() -> Result<()> {
         None
     };
 
+    let reply_task = if let Some(path) = args.reply_file.clone() {
+        let sender = sender.clone();
+        let key = identity.key.clone();
+        let node_id = identity.node_id;
+        let room = transport.lobby_room().to_string();
+        let nickname = args.nickname.clone();
+        Some(tokio::spawn(async move {
+            let mut offset = 0usize;
+            let mut ticker = tokio::time::interval(Duration::from_millis(500));
+            loop {
+                ticker.tick().await;
+                let Ok(content) = std::fs::read_to_string(&path) else {
+                    continue;
+                };
+                if content.len() < offset {
+                    offset = 0;
+                }
+                let Some(newline) = content[offset..].rfind('\n') else {
+                    continue;
+                };
+                let complete = &content[offset..offset + newline + 1];
+                for line in complete.lines() {
+                    let text = line.trim();
+                    if text.is_empty() {
+                        continue;
+                    }
+                    let Ok(mut message) = Message::create(&room, node_id, &nickname, 0, text, None)
+                    else {
+                        continue;
+                    };
+                    message.sign(&key);
+                    let Ok(bytes) = Wire::Message(message).encode() else {
+                        continue;
+                    };
+                    if sender.broadcast(bytes.into()).await.is_ok() {
+                        println!("agent sent: {text}");
+                    }
+                }
+                offset += complete.len();
+            }
+        }))
+    } else {
+        None
+    };
+
     if let Some(bio) = args.bio {
         let profile = Profile {
             description: bio,
@@ -237,6 +285,9 @@ async fn main() -> Result<()> {
 
     if let Some(heartbeat) = heartbeat {
         heartbeat.abort();
+    }
+    if let Some(reply_task) = reply_task {
+        reply_task.abort();
     }
     drop(sender);
     transport.shutdown().await?;

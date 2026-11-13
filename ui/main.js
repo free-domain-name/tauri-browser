@@ -1030,7 +1030,11 @@ const chromeLayout = {
     // The viewport already excludes the fixed top boxes in CSS. Clamp it to the
     // measured toolbar and status bar as a second line of defence: a native
     // webview must never cover the address bar or the footer, even for a frame.
+    // Hard floor for the native page. Native child webviews are outside the
+    // chrome DOM, so a collapsed or absolutely positioned toolbar must never
+    // give them a chance to climb over the address bar.
     const top = Math.max(
+      86,
       Math.round(viewport.top),
       Math.round(toolbar.bottom),
       Math.round(tabstrip.bottom),

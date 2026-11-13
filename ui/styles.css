@@ -24,7 +24,9 @@
   --danger-soft: rgba(180, 35, 24, 0.1);
   --shadow: 0 18px 50px rgba(15, 23, 42, 0.16);
   --radius: 12px;
+  --tabstrip-height: 40px;
   --tabstrip-max-height: 72px;
+  --toolbar-height: 58px;
   --toolbar-max-height: 96px;
   --statusbar-height: 26px;
   --statusbar-max-height: 40px;
@@ -101,8 +103,9 @@ input {
 .tabstrip {
   display: flex;
   align-items: flex-end;
-  flex: 0 0 auto;
-  min-height: 34px;
+  flex: 0 0 var(--tabstrip-height);
+  height: var(--tabstrip-height);
+  min-height: var(--tabstrip-height);
   max-height: var(--tabstrip-max-height);
   gap: 6px;
   padding: 6px 10px 0;
@@ -247,8 +250,9 @@ input {
   position: relative;
   display: flex;
   align-items: center;
-  flex: 0 0 auto;
-  min-height: 44px;
+  flex: 0 0 var(--toolbar-height);
+  height: var(--toolbar-height);
+  min-height: var(--toolbar-height);
   max-height: var(--toolbar-max-height);
   gap: 10px;
   padding: 10px 12px;
@@ -1513,6 +1517,8 @@ button.secondary:hover {
 /* --------------------------------------------------------------- compact */
 
 :root[data-density="compact"] {
+  --tabstrip-height: 38px;
+  --toolbar-height: 48px;
   --statusbar-height: 22px;
   --toolbar-max-height: 88px;
 }

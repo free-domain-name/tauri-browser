@@ -39,12 +39,20 @@ pub struct ContentBounds {
 }
 
 impl ContentBounds {
+    fn top(self) -> f64 {
+        // Belt-and-braces floor, independent of the chrome measurement. A
+        // native child view must never be allowed above the address bar.
+        const MIN_TOP: f64 = 86.0;
+        self.y.max(MIN_TOP)
+    }
+
     fn position(self) -> tauri::LogicalPosition<f64> {
-        tauri::LogicalPosition::new(self.x, self.y)
+        tauri::LogicalPosition::new(self.x, self.top())
     }
 
     fn size(self) -> tauri::LogicalSize<f64> {
-        tauri::LogicalSize::new(self.width.max(1.0), self.height.max(1.0))
+        let height = (self.height - (self.top() - self.y)).max(1.0);
+        tauri::LogicalSize::new(self.width.max(1.0), height)
     }
 
     fn rect(self) -> Rect {

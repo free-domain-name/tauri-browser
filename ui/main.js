@@ -1085,6 +1085,18 @@ function boundsKey(bounds) {
   return `${bounds.x}:${bounds.y}:${bounds.width}:${bounds.height}`;
 }
 
+function ensureFrames() {
+  // The iframe layer only exists on the mobile fallback path. Never create it
+  // for desktop tabs, which are native child webviews outside this DOM.
+  if (els.frames && els.frames.isConnected) return els.frames;
+  const layer = document.createElement("div");
+  layer.id = "frames";
+  layer.className = "frames";
+  els.viewport.prepend(layer);
+  els.frames = layer;
+  return layer;
+}
+
 function iframeView(tab) {
   const frame = document.createElement("iframe");
   frame.className = "frame";
@@ -1106,7 +1118,7 @@ function iframeView(tab) {
     if (state.activeId === tab.id) setBusy(false);
     renderTabs();
   });
-  els.frames.append(frame);
+  ensureFrames().append(frame);
 
   return {
     kind: "iframe",
@@ -2184,7 +2196,10 @@ async function boot() {
       const info = await invoke("browser_info");
       state.contentMode = info.content_mode === "webview" ? "webview" : "iframe";
       document.documentElement.dataset.contentMode = state.contentMode;
-      els.frames.hidden = state.contentMode === "webview";
+      if (state.contentMode === "webview" && els.frames) {
+        els.frames.remove();
+        els.frames = null;
+      }
       document.title = `Free Domain Browser ${info.version}`;
       els.start.dataset.platform = info.platform;
       if (els.statusMode) {

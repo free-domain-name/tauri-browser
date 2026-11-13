@@ -1313,6 +1313,20 @@ function updateNav() {
  * Re-assert the native page rectangle after a load. Page load can reflow the
  * tab title, review controls and status text; lock the view to the final boxes.
  */
+function repaintChrome() {
+  if (!els.settingsMenu.hidden || !els.modal.hidden) return;
+  // WebKit can keep a stale chrome layer when a native child view is added
+  // after a page load. Recreate the toolbar layer once so its controls are
+  // painted again; the native page itself stays below it.
+  els.toolbar.style.display = "none";
+  void els.toolbar.offsetHeight;
+  els.toolbar.style.display = "";
+  els.toolbar.style.transform = "translateZ(0)";
+  requestAnimationFrame(() => {
+    els.toolbar.style.transform = "";
+  });
+}
+
 function lockContentBox(tab) {
   if (!tab || tab.view.kind !== "webview") return;
   const apply = () => {
@@ -1837,7 +1851,8 @@ function bindContentEvents() {
     // A page can finish loading after the chrome has reflowed (status text,
     // progress bar, chat panel). Re-assert the measured box so the native view
     // can never keep an old, taller rectangle over the toolbar or footer.
-    if (tab === activeTab()) {
+    if (!payload.loading && tab === activeTab()) {
+      repaintChrome();
       scheduleLayout();
       requestAnimationFrame(() => lockContentBox(tab));
     }
@@ -2223,7 +2238,7 @@ async function boot() {
       els.start.dataset.platform = info.platform;
       if (els.statusMode) {
         els.statusMode.textContent =
-          state.contentMode === "webview" ? "Desktop webview" : "Mobile frame";
+          state.contentMode === "webview" ? "Desktop webview · UI 8" : "Mobile frame · UI 8";
       }
     } catch {
       state.contentMode = "iframe";

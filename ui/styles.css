@@ -254,6 +254,12 @@ input {
   height: var(--toolbar-height);
   min-height: var(--toolbar-height);
   max-height: var(--toolbar-max-height);
+  /* The address bar is not optional chrome: a skin or a custom rule must not
+     be able to collapse, hide or fade the toolbar. */
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  min-height: 48px !important;
   gap: 10px;
   padding: 10px 12px;
   background: var(--surface);

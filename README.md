@@ -12,11 +12,16 @@ session.
 
 Built with Tauri v2 (Rust + system webview) and a vanilla HTML/CSS/JS chrome.
 Tabs, the address bar, history and the resolution status all live in the chrome;
-on desktop each tab owns its own native child webview (Android uses an iframe) so
-switching tabs keeps the page and its form state alive. The chrome uses a
-BoxLayout-style split: the tab strip, toolbar and status bar are fixed, and the
-page viewport takes all remaining height. It is GPLv3, open source, and has
-light/dark, compact layouts, seven built-in skins and a custom CSS editor.
+each tab renders its page in a cross-origin iframe, so switching tabs keeps the
+page and its form state alive. The chrome uses a BoxLayout-style split: the tab
+strip, toolbar and status bar are fixed, and the page viewport takes all
+remaining height. It is GPLv3, open source, and has light/dark, compact layouts,
+seven built-in skins and a custom CSS editor.
+
+> **Rendering limit.** Because pages load in an iframe, a site that sends
+> `X-Frame-Options` or `frame-ancestors` refuses to render. Use the external-open
+> button for those sites, or open a registry name, which is served through the
+> browser's own `fdn://` proxy and is unaffected.
 
 > **Disclaimer:** Registry names and destinations are public third-party
 > submissions. The project does not operate, monitor or endorse them, and a
@@ -115,6 +120,10 @@ registration and behaves like an A record for HTTP. Use `http://` for a bare
 IP — HTTPS certificates are issued to names, not addresses (unless the
 certificate has an IP SAN). A port and a path are optional.
 
+A target that points back at the machine running the browser — loopback,
+private, link-local or another reserved range, or a `localhost`/`.local` name —
+is rejected by the client and never fetched.
+
 `ttl` is the client cache lifetime in seconds. Records live in memory
 (`Arc<RwLock<HashMap<String, CachedRecord>>>`) and in
 `app_cache_dir()/registry/<shard path>`. Negative (404) results are cached for
@@ -180,6 +189,10 @@ not buy the ICANN registration. If that public domain becomes active later, the
 browser shows visitors the conflict chooser. A name in both the registry and
 public DNS also shows the conflict modal.
 
+A choice made in that modal is remembered for the session, so the same name
+opens the same way next time. The status bar then shows a **Saved choice**
+control; clicking it forgets the choice, and the next visit asks again.
+
 ## Project layout
 
 ```text
@@ -198,7 +211,8 @@ src-tauri/
     registry.rs          sharded fetcher + memory/disk cache
     resolver.rs          input parsing, registry/public plan, conflict detection
     proxy.rs             fdn:// handler, redirects, header/HTML rewriting
-    browser.rs           desktop child webviews, bounds/focus commands, native menu
+    browser.rs           tab content modes, bounds/focus commands, native menu
+    chat/                community chat: identity, protocol, transport, policy
     error.rs             serializable error type
 ```
 
@@ -206,15 +220,27 @@ src-tauri/
 
 | Command                        | Description                                    |
 | ------------------------------ | ---------------------------------------------- |
-| `navigate(input)`              | Resolve an address-bar input into a plan.      |
+| `navigate(input)`              | Resolve an address-bar input into a plan. `remembered` names the source of a choice that was stored earlier. |
 | `choose_resolution(domain, path, choice)` | Remember `registry`/`public` and return the URL. |
-| `forget_resolution(domain)`    | Forget a session choice.                       |
+| `forget_resolution(domain)`    | Forget a session choice. The chrome calls it from the "Saved choice" control in the status bar. |
 | `clear_registry_cache()`       | Drop memory and disk registry caches.          |
 | `open_external(url)`           | Send an http(s) URL to the system browser.     |
-| `browser_info()`               | Version, proxy base, registry base, platform.  |
+| `open_review_window(domain)`   | Open the review thread for a registry name.    |
+| `browser_info()`               | Version, proxy base, registry base, platform, content mode, chat availability. |
+| `focus_chrome()`               | Give the chrome window the keyboard focus.     |
+| `content_open`/`content_show`/`content_hide`/`content_set_bounds`/`content_focus`/`content_close` | Native child-webview tab commands. Dormant: `browser_info().content_mode` is `iframe`, so the chrome renders tabs itself. |
+| `chat_set_enabled(tab_id, enabled)` | Turn the chat panel on or off for one tab.  |
+| `chat_snapshot()`              | Current chat state for the chrome.             |
+| `chat_send(text)`              | Send a message to the lobby.                   |
+| `chat_set_nickname(nickname)`  | Change the display name.                       |
+| `chat_update_profile(profile, show_profile_in_rooms)` | Publish or hide the profile card. |
+| `chat_confirm_age()`           | Record the 18+ confirmation.                   |
+| `chat_ignore(sender)`/`chat_unignore(sender)` | Block or unblock a sender.   |
+| `chat_clear_local_data()`      | Forget the identity and the local chat data.   |
 
 On a conflict the Rust command also emits the `conflict-detected` event with the
-same payload.
+same payload. The chat service emits `chat://state`, `chat://message`,
+`chat://presence` and `chat://error`.
 
 ## Tabs and keyboard
 
@@ -224,9 +250,9 @@ focuses the address bar, `Ctrl/Cmd+R` reloads, and `Ctrl+Tab` cycles tabs.
 Middle-clicking a tab closes it. Tabs are intentionally in-memory; a restart
 starts with one new tab.
 
-Desktop pages are native child webviews with their own keyboard focus, so the
-shortcuts are also installed as native menu commands. The menu forwards each
-command to the chrome, which keeps the page's own text input working.
+Pages load in an iframe, so a focused page keeps its own keyboard focus while the
+chrome shortcuts are also installed as native menu commands. The menu forwards
+each command to the chrome, which keeps the page's own text input working.
 
 The gear (or `Ctrl/Cmd+,`) opens **Appearance**:
 
@@ -242,8 +268,7 @@ The gear (or `Ctrl/Cmd+,`) opens **Appearance**:
   the theme choice still works underneath it.
 - **Write your own CSS** — a local CSS editor that applies after the selected
   skin. It can restyle the chrome, tabs, start page and settings panel; page
-  content lives in a separate native view (or iframe on Android) and is isolated
-  and unaffected.
+  content lives in a separate iframe document and is isolated and unaffected.
 
 All appearance choices are stored in `localStorage` for this device and applied
 before the first paint, so a dark theme does not flash light. The menu also has a
@@ -294,11 +319,18 @@ The first enable requires an 18+ confirmation. Messages and presence are signed
 with an Ed25519 key stored in the OS keychain. History is in memory for this
 session only; the server stores no messages. There are no DMs in v1.
 
+Chat needs a private, persistent secret store, so it runs on the platforms that
+have an OS keychain: macOS, Windows and Linux. The current `keyring` release has
+no Android keystore backend, so the toolbar entry is hidden on Android instead
+of falling back to an in-memory key.
+
 An optional profile (description, gender, age band, country, city) is stored
 locally and shared only when "show profile in rooms" is enabled. It travels as a
 signed card, is kept in memory for the session, and is limited to one update per
 five minutes. People with a shared profile get a Profile button in the user
-list.
+list. Turning the card off removes it from this browser, but a peer that
+already received the signed card keeps it: the wire format has no revocation
+message, so hiding a profile is not a withdrawal.
 
 The General lobby is `fdn:general:v1`. Production bootstrap defaults are
 compiled into `chat/config.rs`: the relay is `http://chat.vitrn.com:28443` and
@@ -310,11 +342,11 @@ carried by a Cloudflare proxy. Override the defaults for development with:
 FDN_CHAT_RELAY_URL=http://127.0.0.1:28443 \
 FDN_CHAT_LOBBY_ID=<server bootstrap lobby_node_id> \
 npm run dev
+```
 
 For a production smoke test, put the server's `bootstrap.json` in the app config
 directory as `chat-bootstrap.json`, or use the two `chat_probe` instances shown
 in `src-tauri/examples/chat_probe.rs`.
-```
 
 A local `chat-bootstrap.json` in the app config directory is also accepted, and
 `FDN_CHAT_LOBBY_ROOM` overrides the lobby name. Site rooms are deferred from
@@ -396,8 +428,12 @@ cache size and the last debug binary. For verbose CLI output use
   `src-tauri/gen/android/app/src/main/AndroidManifest.xml`.
 - The generated `gen/android` project is not committed; `npm run android:init`
   recreates it.
-- Multi-webview layouts are not available on Android, which is why the content
-  view is an iframe (see limitations).
+- Multi-webview layouts are not available on Android, and every platform uses
+  the iframe renderer today (see limitations).
+- Community chat is hidden on Android: it needs the OS keychain, and the
+  current `keyring` release has no Android keystore backend.
+- No Android build is produced by CI yet. `cargo tauri android build` needs the
+  Android SDK/NDK on the machine that runs it.
 
 ## Community reviews and scores
 
@@ -425,8 +461,9 @@ and [review rules](https://github.com/free-domain-name/registry/blob/main/review
 ## Security model
 
 - The main window (local chrome) has `core:default` and `opener:default`.
-  Remote pages render in separate native child webviews on desktop and in
-  cross-origin iframes on Android. Neither is granted Tauri IPC capabilities.
+  Remote pages render in cross-origin iframes inside that window. An iframe
+  never receives Tauri IPC capabilities, so a page cannot reach the commands
+  above.
 - The review window is a separate remote webview with no IPC capability. It
   loads the public Stumble page and keeps GitHub OAuth contained there; the
   browser chrome and open tabs are not replaced by the sign-in flow.
@@ -438,8 +475,9 @@ and [review rules](https://github.com/free-domain-name/registry/blob/main/review
   malicious destination loses those protections **inside this browser**; only
   visit names you trust.
 - `target_url` must be an `http(s)` origin with no credentials, path, query or
-  fragment; the browser validates this too. The registry validator rejects
-  wildcards, loops, paths and unknown fields.
+  fragment; the browser validates this too, and rejects a target that points at
+  a loopback, private, link-local or reserved address. The registry validator
+  rejects wildcards, loops, paths and unknown fields.
 - HTTPS targets use `rustls` with normal certificate validation. There is no
   "ignore certificate errors" switch.
 - Cookies are passed through, but `Domain=` and `Secure` attributes are dropped
@@ -482,30 +520,39 @@ not suppressed.
 
 ## Known limitations (v1)
 
-- **Framing (Android only):** the Android build renders content in an iframe, so
-  public sites that send `X-Frame-Options`/`frame-ancestors` refuse to load;
-  use the external-open button there. Desktop tabs use native child webviews and
-  are not subject to `frame-ancestors`. Registry destinations are unaffected on
-  both because the proxy strips those headers.
+- **Framing:** every platform renders pages in an iframe, so public sites that
+  send `X-Frame-Options`/`frame-ancestors` refuse to load; use the external-open
+  button for those. Registry destinations are unaffected because the proxy
+  strips those headers. A native child-webview renderer exists in
+  `src-tauri/src/browser.rs` and would remove this limit, but Tauri composites
+  child webviews above the chrome, so it can cover the address bar; it is
+  switched off until that is solved.
 - **Interception scope:** only navigations that go through `fdn://` are proxied.
   A page on the public web that links to a registry name goes to the public web
   until the address bar is used again.
 - **Buffered responses:** Tauri's URI-scheme responder needs a complete body, so
-  large downloads and video are buffered up to 64 MiB. Streaming needs a
-  different transport (local proxy or range-aware response).
+  large downloads and video are buffered up to 64 MiB. The download stops at the
+  limit instead of finishing first, but the body is still held in memory.
+  Streaming needs a different transport (local proxy or range-aware response).
 - **Redirects:** followed inside the proxy, up to five. The final page is served
   under the registry name, so absolute links to a different host leave the proxy
-  and are not tracked in the address bar.
-- **History:** the chrome tracks address-bar navigations and main-frame page
-  loads reported by the desktop webview, per tab. On Android the bridge reports
-  registry in-page navigations. Script-driven URL changes (`pushState`) do not
-  update the address bar on desktop, and link clicks inside public iframes
-  cannot be observed on Android because they are cross-origin.
-- **Tabs:** on desktop each tab is a native child webview (Tauri multiwebview)
-  with no Tauri IPC, so sites that block framing still render. Android keeps the
-  iframe fallback described above.
+  and are not tracked in the address bar. A redirect to a loopback, private or
+  link-local address is refused.
+- **Base URLs:** a `<base href>` pointing at the registry target is rewritten to
+  the proxy, so relative links stay under the registry name. A base pointing at
+  a different host is left alone and its relative links leave the proxy, like
+  the absolute links above.
+- **History:** the chrome tracks address-bar navigations per tab, plus the
+  in-page navigations the proxy bridge reports for registry destinations.
+  Script-driven URL changes (`pushState`) and link clicks inside public iframes
+  cannot be observed, because the frame is cross-origin.
+- **Tabs:** each tab is an iframe with no Tauri IPC. Tab state is in memory and
+  a restart starts with one new tab.
 - **No wildcard records:** the current registry schema is exact-name only.
 - **Session choices** are in memory and disappear when the app exits.
+- **Chat is desktop-only:** it signs messages with a key kept in the OS
+  keychain, and no Android keystore backend is available in the current
+  `keyring` release. The toolbar entry is hidden on Android.
 
 ## Tests
 
@@ -513,14 +560,20 @@ not suppressed.
 cd src-tauri && cargo test --lib
 ```
 
-The unit tests cover shard-path derivation (Rust and Node must agree), input
-parsing, the unregistered-name branch, URL rewriting, cookie sanitization, the
-bridge and error-page escaping. The `#[ignore]` live tests check the real registry
-and DNS, including an unregistered public `.com` and a registered public name:
+The unit tests cover shard-path derivation, input parsing, the unregistered-name
+branch, URL rewriting, cookie sanitization, the bridge and error-page escaping.
+The `#[ignore]` live tests check the real registry and DNS, including an
+unregistered public `.com` and a registered public name:
 
 ```bash
 cd src-tauri && cargo test --lib -- --ignored
 ```
+
+The [CI workflow](.github/workflows/ci.yml) runs `cargo fmt --check`,
+`cargo clippy -- -D warnings` and `cargo test --lib` on Linux, macOS and
+Windows for every push and pull request, and checks that the chrome scripts
+parse. The live-network tests stay out of CI on purpose: they read the public
+registry and public DNS, so they belong to a local run.
 
 The registry validates itself with:
 

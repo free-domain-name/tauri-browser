@@ -190,17 +190,25 @@ One binary, one config, one systemd unit, one log stream, one listener.
 src-tauri/src/chat/
   mod.rs        commands, events, lifecycle, panel enable/disable
   identity.rs   keypair + keychain (lazy on first enable)
-  rooms.rs      lobby (app-wide) + per-tab site rooms with LRU cap
-  gossip.rs     iroh endpoint + gossip subscription
+  room.rs       lobby room name + gossip topic id
+  transport.rs  iroh endpoint + gossip subscription
   policy.rs     rate limits, duplicate blocking, ignore filtering
   profile.rs    local profile and validation
+  protocol.rs   signed message, presence and profile-card wire format
+  settings.rs   persisted nickname, profile, age confirmation, ignore list
+  config.rs     relay URL, lobby node id, room name
 ```
 
-Commands: `chat_set_enabled` (per tab), `chat_join_room`, `chat_leave_room`,
-`chat_send`, `chat_update_profile`, `chat_ignore`, `chat_unignore`,
-`chat_snapshot`, `chat_set_active_tab`.
-Events: `chat://state`, `chat://message`, `chat://presence`, `chat://error`,
-`chat://rooms`.
+Commands: `chat_set_enabled` (per tab), `chat_send`, `chat_update_profile`,
+`chat_set_nickname`, `chat_confirm_age`, `chat_ignore`, `chat_unignore`,
+`chat_clear_local_data`, `chat_snapshot`.
+Events: `chat://state`, `chat://message`, `chat://presence`, `chat://error`.
+
+Not implemented: `chat_join_room`/`chat_leave_room` and the `chat://rooms`
+event belong to site rooms (§20), and `chat_set_active_tab` belonged to the
+per-tab routing that only a site room needs. With a single lobby the panel
+follows the active tab in the chrome, so the command had no effect and was
+removed rather than left in place.
 
 The panel lives in local chrome, never injected into the remote iframe. Remote
 pages stay cross-origin with no Tauri IPC, the app CSP stays local, and no chat
@@ -210,9 +218,13 @@ token or private key reaches page content. The endpoint starts on first
 ## 13. Local storage
 
 Persisted: identity key (keychain), nickname, optional profile, ignore list, UI
-settings, panel preference (default off), "ask before joining" preference.
+settings.
 Not persisted: messages, history, presence, profiles received from peers, the
 set of open site rooms.
+
+The panel preference and the "ask before joining" preference are not stored:
+the panel is off until the user turns it on, and joining a site room is
+deferred (§20).
 
 ## 14. Threats
 
@@ -318,6 +330,8 @@ Implemented so far:
 - Client: signed message/presence protocol, keychain identity, static bootstrap,
   rate limits and ignore list, settings, iroh transport, lobby lifecycle,
   Tauri commands/events, and the per-tab lobby side panel with an 18+ gate.
+  The panel follows the active tab in the chrome; there is no per-tab command
+  for it while the General lobby is the only room.
 - End-to-end verified locally: a signed probe message reached the running
   browser, verified, and updated the online count.
 

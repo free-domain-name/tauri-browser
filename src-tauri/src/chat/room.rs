@@ -6,8 +6,6 @@
 use iroh_gossip::TopicId;
 use sha2::{Digest, Sha256};
 
-pub const LOBBY_ROOM: &str = "fdn:general:v1";
-
 /// `sha256(room)` is the gossip topic. This mapping must match the server and
 /// every client version; changing it creates a different room.
 pub fn topic_id(room: &str) -> TopicId {
@@ -18,11 +16,12 @@ pub fn topic_id(room: &str) -> TopicId {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat::config::DEFAULT_LOBBY_ROOM;
 
     #[test]
     fn lobby_matches_server_mapping() {
         assert_eq!(
-            hex::encode(topic_id(LOBBY_ROOM).as_bytes()),
+            hex::encode(topic_id(DEFAULT_LOBBY_ROOM).as_bytes()),
             "2bf5b809cdde7ceeaf3abb1f1e260dd1fcb2089d259389cc1b622ec70bfd72de"
         );
     }

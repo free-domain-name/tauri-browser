@@ -1,19 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-only
 // Copyright (C) 2026 Free Domain Name contributors
 
-//! Native content webviews for desktop tabs.
+//! Content views for browser tabs.
 //!
-//! Public sites such as Yahoo send `Content-Security-Policy: frame-ancestors`,
-//! so an iframe can never display them. Desktop tabs therefore own a child
-//! [`tauri::Webview`] positioned over the chrome viewport. The webview is a
-//! top-level browsing context, which is what the site expects.
+//! Two renderers exist for a tab:
 //!
-//! The chrome stays in the `main` webview. Tauri stacks child webviews above
-//! their parent, so the chrome asks the Rust side to hide, show and resize the
-//! active tab as the toolbar, chat panel and dialogs need the space.
+//! * **iframe tabs** — the shipped path, on every platform. The page renders
+//!   in a cross-origin `<iframe>` inside the chrome window. Page content can
+//!   never cover the address bar, but a site that sends `X-Frame-Options` or
+//!   `frame-ancestors` refuses to render.
+//! * **native child webviews** — a child [`tauri::Webview`] per tab, positioned
+//!   over the measured chrome viewport. It renders framing-blocked sites, but
+//!   Tauri always composites child webviews above the chrome, so they can
+//!   cover the address bar. [`content_mode`] therefore reports `"iframe"` and
+//!   this path stays dormant until that overlap is solved.
 //!
-//! Mobile keeps the iframe path ([`content_mode`] reports `iframe` there):
-//! Tauri's multiwebview support is desktop-only.
+//! The chrome stays in the `main` webview. When the native path is active the
+//! chrome asks the Rust side to hide, show and resize the active tab as the
+//! toolbar, chat panel and dialogs need the space.
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Rect};
@@ -22,8 +26,9 @@ use crate::error::{AppError, AppResult};
 
 /// How the frontend should render page content.
 pub const fn content_mode() -> &'static str {
-    // Native desktop child webviews are disabled: they sit above the chrome
-    // and can cover the address bar. Use the classic iframe tab path again.
+    // Native desktop child webviews are disabled: Tauri composites them above
+    // the chrome, so they can cover the address bar. The iframe renderer is
+    // used on every platform until that overlap is solved.
     "iframe"
 }
 
@@ -112,7 +117,7 @@ pub async fn content_open(
 ) -> AppResult<()> {
     #[cfg(desktop)]
     {
-        return desktop::open(app, tab_id, url, bounds);
+        desktop::open(app, tab_id, url, bounds)
     }
     #[cfg(not(desktop))]
     {
@@ -132,7 +137,7 @@ pub async fn content_show(app: AppHandle, tab_id: String, bounds: ContentBounds)
             webview.set_bounds(bounds.rect())?;
             webview.show()?;
         }
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(desktop))]
     {
@@ -149,7 +154,7 @@ pub async fn content_hide(app: AppHandle, tab_id: String) -> AppResult<()> {
         if let Some(webview) = app.get_webview(&label) {
             webview.hide()?;
         }
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(desktop))]
     {
@@ -170,7 +175,7 @@ pub async fn content_set_bounds(
         if let Some(webview) = app.get_webview(&label) {
             webview.set_bounds(bounds.rect())?;
         }
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(desktop))]
     {
@@ -187,7 +192,7 @@ pub async fn content_focus(app: AppHandle, tab_id: String) -> AppResult<()> {
         if let Some(webview) = app.get_webview(&label) {
             webview.set_focus()?;
         }
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(desktop))]
     {
@@ -204,7 +209,7 @@ pub async fn content_close(app: AppHandle, tab_id: String) -> AppResult<()> {
         if let Some(webview) = app.get_webview(&label) {
             webview.close()?;
         }
-        return Ok(());
+        Ok(())
     }
     #[cfg(not(desktop))]
     {

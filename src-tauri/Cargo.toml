@@ -64,6 +64,13 @@ keyring = { version = "3.6", features = ["windows-native"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "3.6", features = ["sync-secret-service", "crypto-rust"] }
 
+# Android has no keyring backend in 3.6: the crate falls back to its in-memory
+# mock store there, which never persists a secret. The dependency is declared
+# so the crate still compiles for Android, and the chat feature stays off on
+# that platform until keyring 4 provides `android-native-keyring-store`.
+[target.'cfg(target_os = "android")'.dependencies]
+keyring = { version = "3.6", default-features = false }
+
 
 [features]
 # Kept for the Tauri CLI; the app does not need a custom protocol asset loader.

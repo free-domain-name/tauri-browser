@@ -48,7 +48,15 @@ pub const EVENT_STATE: &str = "chat://state";
 pub const EVENT_MESSAGE: &str = "chat://message";
 pub const EVENT_PRESENCE: &str = "chat://presence";
 pub const EVENT_ERROR: &str = "chat://error";
-pub const EVENT_ROOMS: &str = "chat://rooms";
+
+/// Whether community chat can run on this platform.
+///
+/// Chat signs its messages with an Ed25519 key kept in the OS keychain, so it
+/// needs a platform with a private, persistent secret store. See
+/// [`identity::platform_supported`] for the details.
+pub const fn platform_supported() -> bool {
+    identity::platform_supported()
+}
 
 const HEARTBEAT: Duration = Duration::from_secs(15);
 const PRESENCE_TTL_MS: i64 = 45_000;
@@ -59,6 +67,8 @@ const PROFILE_COOLDOWN: Duration = Duration::from_secs(5 * 60);
 pub enum ChatError {
     #[error("18+ confirmation is required before enabling chat")]
     AgeGate,
+    #[error("community chat is not available on this platform")]
+    UnsupportedPlatform,
     #[error("chat bootstrap is not configured (missing lobby node ID)")]
     NotConfigured,
     #[error("chat is not enabled")]
@@ -170,7 +180,6 @@ struct Session {
 
 struct Inner {
     enabled_tabs: BTreeSet<String>,
-    active_tab: Option<String>,
     session: Option<Session>,
     error: Option<String>,
 }
@@ -194,7 +203,6 @@ impl ChatService {
             app,
             inner: tokio::sync::Mutex::new(Inner {
                 enabled_tabs: BTreeSet::new(),
-                active_tab: None,
                 session: None,
                 error: None,
             }),
@@ -206,6 +214,9 @@ impl ChatService {
 
     async fn set_enabled(&self, tab_id: String, enabled: bool) -> Result<Snapshot, ChatError> {
         if enabled {
+            if !platform_supported() {
+                return Err(ChatError::UnsupportedPlatform);
+            }
             let settings = self.settings.get();
             if !settings.age_confirmed {
                 return Err(ChatError::AgeGate);
@@ -220,12 +231,8 @@ impl ChatService {
             let mut inner = self.inner.lock().await;
             if enabled {
                 inner.enabled_tabs.insert(tab_id.clone());
-                inner.active_tab = Some(tab_id.clone());
             } else {
                 inner.enabled_tabs.remove(&tab_id);
-                if inner.active_tab.as_deref() == Some(tab_id.as_str()) {
-                    inner.active_tab = inner.enabled_tabs.iter().next().cloned();
-                }
             }
         }
 
@@ -249,14 +256,13 @@ impl ChatService {
             self.stop_session().await;
         }
 
-        let _ = self.settings.update(|settings| {
-            settings.panel_enabled = should_run;
-        });
-
         Ok(self.snapshot().await)
     }
 
     async fn start_session(&self) -> Result<(), ChatError> {
+        if !platform_supported() {
+            return Err(ChatError::UnsupportedPlatform);
+        }
         {
             let inner = self.inner.lock().await;
             if inner.session.is_some() {
@@ -336,8 +342,9 @@ impl ChatService {
             let shared = Arc::clone(&shared);
             let sender = sender.clone();
             let key = Arc::clone(&identity);
+            let settings = Arc::clone(&self.settings);
             tokio::spawn(async move {
-                run_heartbeat(app, shared, sender, key).await;
+                run_heartbeat(app, shared, sender, key, settings).await;
             })
         };
 
@@ -506,14 +513,6 @@ impl ChatService {
         Ok(self.snapshot().await)
     }
 
-    async fn set_active_tab(&self, tab_id: Option<String>) -> Snapshot {
-        {
-            let mut inner = self.inner.lock().await;
-            inner.active_tab = tab_id;
-        }
-        self.snapshot().await
-    }
-
     async fn ignore(&self, sender: String) -> Result<Snapshot, ChatError> {
         let sender: EndpointId = sender
             .parse()
@@ -599,6 +598,22 @@ impl ChatService {
                 )
             })
         };
+        let current = self.settings.get();
+        let card_changed = current.profile != profile;
+        let visibility_changed = current.show_profile_in_rooms != show_in_rooms;
+
+        // A save that changes nothing is not a card update: it does not bump
+        // the version, it does not go out to the room, and it is not rate
+        // limited. Saving the same card again used to fail with a cooldown
+        // error even though nothing was being sent.
+        if !card_changed && !visibility_changed {
+            return Ok(self.snapshot().await);
+        }
+
+        // The cooldown guards the card that goes out to the room, so it only
+        // applies when a card is actually shown. Turning the card off, or
+        // editing it while it stays hidden, is a local change and is never
+        // blocked.
         if show_in_rooms && !profile.is_empty() {
             if let Some((shared, _, _)) = &session {
                 let left = profile_cooldown_ms(shared);
@@ -608,7 +623,7 @@ impl ChatService {
             }
         }
 
-        let next_version = self.settings.get().profile_version.wrapping_add(1).max(1);
+        let next_version = current.profile_version.wrapping_add(1).max(1);
         let updated = self
             .settings
             .update(|settings| {
@@ -652,7 +667,6 @@ impl ChatService {
         {
             let mut inner = self.inner.lock().await;
             inner.enabled_tabs.clear();
-            inner.active_tab = None;
         }
         let snapshot = self.snapshot().await;
         let _ = self.app.emit(EVENT_STATE, snapshot.clone());
@@ -884,6 +898,7 @@ async fn run_heartbeat(
     shared: Arc<Shared>,
     sender: GossipSender,
     identity: Arc<Identity>,
+    settings: Arc<SettingsStore>,
 ) {
     loop {
         let nickname = shared.nickname.lock().expect("nickname lock").clone();
@@ -929,6 +944,10 @@ async fn run_heartbeat(
             .retain(|sender, _| active_users.contains(sender));
         if changed {
             emit_presence(&app, &shared);
+            // The presence list changed, so the online count in the snapshot is
+            // stale. Send the state as well, otherwise the count in the panel
+            // keeps counting a peer that already dropped out.
+            emit_state(&app, &shared, &settings.get(), true);
         }
 
         tokio::time::sleep(HEARTBEAT).await;
@@ -1135,14 +1154,6 @@ pub async fn chat_update_profile(
 #[tauri::command]
 pub async fn chat_confirm_age(service: State<'_, ChatService>) -> Result<Snapshot, ChatError> {
     service.confirm_age().await
-}
-
-#[tauri::command]
-pub async fn chat_set_active_tab(
-    service: State<'_, ChatService>,
-    tab_id: Option<String>,
-) -> Result<Snapshot, ChatError> {
-    Ok(service.set_active_tab(tab_id).await)
 }
 
 #[tauri::command]

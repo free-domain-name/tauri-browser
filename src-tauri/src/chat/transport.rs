@@ -14,14 +14,14 @@ use iroh::{
 };
 use iroh_gossip::{api::GossipTopic, Gossip, ALPN};
 
-use super::{config::BootstrapConfig, identity::Identity, protocol::PROTOCOL_VERSION};
+use super::{config::BootstrapConfig, identity::Identity};
 
 pub struct Transport {
-    endpoint: Endpoint,
+    /// Held so the endpoint stays alive for as long as the transport does.
+    _endpoint: Endpoint,
     gossip: Gossip,
     router: Router,
     lobby_id: EndpointId,
-    relay_url: RelayUrl,
     lobby_room: String,
 }
 
@@ -60,29 +60,16 @@ impl Transport {
             .spawn();
 
         Ok(Self {
-            endpoint,
+            _endpoint: endpoint,
             gossip,
             router,
             lobby_id,
-            relay_url,
             lobby_room: config.lobby_room.clone(),
         })
     }
 
-    pub fn node_id(&self) -> EndpointId {
-        self.endpoint.id()
-    }
-
-    pub fn relay_url(&self) -> &RelayUrl {
-        &self.relay_url
-    }
-
     pub fn lobby_room(&self) -> &str {
         &self.lobby_room
-    }
-
-    pub fn lobby_id(&self) -> EndpointId {
-        self.lobby_id
     }
 
     /// Subscribes to the shared lobby. The caller decides how long to wait for
@@ -106,6 +93,3 @@ impl Transport {
         Ok(())
     }
 }
-
-/// Protocol/version marker used by the UI and diagnostics.
-pub const WIRE_VERSION: u8 = PROTOCOL_VERSION;

@@ -14,6 +14,18 @@ use super::protocol::fingerprint;
 const SERVICE: &str = "org.free-domain.browser.chat";
 const ENTRY: &str = "identity-v1";
 
+/// Whether this platform can keep the chat identity in a private, persistent
+/// store.
+///
+/// The Ed25519 secret has to survive an app restart, and it has to stay out of
+/// reach of other apps. macOS, Windows and Linux have an OS keychain for that.
+/// Android has no `keyring` backend in 3.6 — the crate falls back to its
+/// in-memory mock store, which forgets the secret on every launch — so chat is
+/// disabled there until `keyring` 4 provides `android-native-keyring-store`.
+pub const fn platform_supported() -> bool {
+    cfg!(not(target_os = "android"))
+}
+
 pub struct Identity {
     pub key: SecretKey,
     pub node_id: EndpointId,
@@ -34,6 +46,9 @@ impl Identity {
     }
 
     pub fn load_or_create() -> Result<Self, IdentityError> {
+        if !platform_supported() {
+            return Err(IdentityError::UnsupportedPlatform);
+        }
         let entry = keyring::Entry::new(SERVICE, ENTRY)?;
         let key = match entry.get_secret() {
             Ok(bytes) => parse_key(&bytes)?,
@@ -51,15 +66,13 @@ impl Identity {
             node_id,
         })
     }
-
-    /// Rotates the identity. The old key is unrecoverable, so callers must warn.
-    pub fn rotate() -> Result<Self, IdentityError> {
-        delete()?;
-        Self::load_or_create()
-    }
 }
 
 pub fn delete() -> Result<(), IdentityError> {
+    if !platform_supported() {
+        // Nothing was ever stored, so nothing can be removed.
+        return Ok(());
+    }
     let entry = keyring::Entry::new(SERVICE, ENTRY)?;
     match entry.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
@@ -80,4 +93,6 @@ pub enum IdentityError {
     Keyring(#[from] keyring::Error),
     #[error("invalid chat identity: {0}")]
     BadKey(String),
+    #[error("the OS keychain is not available on this platform")]
+    UnsupportedPlatform,
 }

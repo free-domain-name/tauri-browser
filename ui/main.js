@@ -7,10 +7,11 @@
  * Browser chrome for the Free Domain Browser.
  *
  * Every tab owns its own page view and history stack, so switching tabs keeps
- * the page (and its form state) alive. On desktop the view is a native child
- * webview, because sites that send `frame-ancestors` refuse to render in an
- * iframe; mobile keeps the iframe. The Rust side owns resolution and the
- * native views; this file only renders the plan it receives:
+ * the page (and its form state) alive. The view is a cross-origin iframe on
+ * every platform: a native child webview renderer exists in the Rust side, but
+ * Tauri composites child webviews above the chrome, so it can cover the
+ * address bar and stays switched off. The Rust side owns resolution; this file
+ * only renders the plan it receives:
  *
  *   navigate     -> load `url` in the tab's view
  *   unregistered -> show the claim page for a name absent everywhere
@@ -112,6 +113,7 @@ const els = {
   statusText: $("#statusText"),
   statusUrl: $("#statusUrl"),
   statusMode: $("#statusMode"),
+  forgetChoice: $("#forgetChoice"),
   statusbar: $("#statusbar"),
   schemeDot: $("#schemeDot"),
   modal: $("#modal"),
@@ -208,6 +210,9 @@ const state = {
     cooldownTimer: null,
     error: "",
     clearArmed: false,
+    // Chat needs an OS keychain; the Rust side reports whether this platform
+    // has one, and the toolbar entry is hidden when it does not.
+    available: true,
     clearTimer: null,
     unlisten: [],
   },
@@ -244,6 +249,50 @@ function setStatus(source, text = LABELS[source] ?? "Ready") {
 function setStatusDetail(text) {
   if (els.statusUrl) els.statusUrl.textContent = text || "";
   if (els.statusUrl) els.statusUrl.title = text || "";
+}
+
+/* ------------------------------------------------------ remembered choices */
+
+/**
+ * Shows the "saved choice" control when the current tab was opened with a
+ * destination that was remembered from an earlier visit. Clicking it forgets
+ * that choice, so the next visit asks again.
+ */
+function syncRememberedChoice(tab = activeTab()) {
+  if (!els.forgetChoice) return;
+  const entry = tab && tab.entry;
+  const choice = entry && entry.kind === "navigate" ? entry.remembered : null;
+  if (!choice) {
+    els.forgetChoice.hidden = true;
+    els.forgetChoice.textContent = "";
+    els.forgetChoice.removeAttribute("data-domain");
+    return;
+  }
+  const label = choice === "github_registry" ? "Free Registry" : "Public Web";
+  els.forgetChoice.hidden = false;
+  els.forgetChoice.textContent = `Saved choice: ${label}`;
+  els.forgetChoice.title =
+    `${entry.domain || "This name"} always opens the ${label}. ` +
+    "Click to forget the choice and be asked again.";
+  els.forgetChoice.dataset.domain = entry.domain || "";
+}
+
+async function forgetRememberedChoice() {
+  const domain = els.forgetChoice?.dataset.domain;
+  if (!domain) return;
+  if (!invoke) {
+    toast("Tauri IPC is not available. Run the app with `npm run dev`.");
+    return;
+  }
+  try {
+    await invoke("forget_resolution", { domain });
+    const tab = activeTab();
+    if (tab && tab.entry) tab.entry.remembered = null;
+    syncRememberedChoice(tab);
+    toast(`Saved choice for ${domain} forgotten. The next visit will ask again.`);
+  } catch (error) {
+    toast(String(error));
+  }
 }
 
 function setBusy(busy) {
@@ -948,6 +997,9 @@ function bindChat() {
     const snapshot = state.chat.snapshot;
     if (!snapshot) return;
     snapshot.users = event.payload?.users || [];
+    // The presence list is authoritative for the online count. Without this
+    // the number keeps counting peers that already dropped out.
+    snapshot.online = snapshot.users.filter((user) => !user.is_me).length;
     renderChat();
   }).then((unlisten) => state.chat.unlisten.push(unlisten)).catch(() => {});
   listen("chat://error", (event) => {
@@ -1157,10 +1209,10 @@ function contentCall(command, args) {
  *
  * This is deliberately the same idea as Swing's BoxLayout: the tab strip,
  * toolbar and status bar are non-growing boxes, and the viewport is the only
- * child with `flex-grow`. Native child webviews are positioned from the
- * *measured* viewport, never from a guessed height. `measure()` also refuses to
- * report a usable box when the chrome has not been laid out yet, so a page can
- * never be shown over a missing address bar.
+ * child with `flex-grow`. The dormant native renderer positions its child
+ * webviews from the *measured* viewport, never from a guessed height.
+ * `measure()` also refuses to report a usable box when the chrome has not been
+ * laid out yet, so a page can never be shown over a missing address bar.
  */
 const chromeLayout = {
   last: null,
@@ -1237,8 +1289,8 @@ function boundsKey(bounds) {
 }
 
 function ensureFrames() {
-  // The iframe layer only exists on the mobile fallback path. Never create it
-  // for desktop tabs, which are native child webviews outside this DOM.
+  // The iframe layer holds the page of every tab. The dormant native renderer
+  // draws its pages outside this DOM, so the layer must not exist in that mode.
   if (els.frames && els.frames.isConnected) return els.frames;
   const layer = document.createElement("div");
   layer.id = "frames";
@@ -1374,6 +1426,7 @@ function activateTab(id) {
   setBusy(Boolean(tab.loading));
   syncView();
   syncChatToActiveTab();
+  syncRememberedChoice(tab);
   if (
     tab.view.kind === "webview" &&
     tab.entry?.kind === "navigate" &&
@@ -1381,9 +1434,6 @@ function activateTab(id) {
     els.settingsMenu.hidden
   ) {
     tab.view.focus().catch(() => {});
-  }
-  if (invoke && chatEnabledHere()) {
-    invoke("chat_set_active_tab", { tabId: String(id) }).catch(() => {});
   }
 }
 
@@ -1491,9 +1541,10 @@ function lockContentBox(tab) {
 }
 
 /**
- * Native child webviews always sit above the chrome, so chrome dialogs and the
- * chat panel cannot overlay them. Hide the active page while a dialog is open,
- * and give the chat panel its own column instead of covering the page.
+ * The page view follows the chrome boxes. A native child webview would always
+ * sit above the chrome, so chrome dialogs and the chat panel could not overlay
+ * it: the page is hidden while a dialog is open, and the chat panel gets its
+ * own column instead of covering the page.
  */
 function layoutContent() {
   state.layoutFrame = 0;
@@ -1658,6 +1709,7 @@ function applyOutcome(outcome, { push = true, tab = activeTab() } = {}) {
     path: outcome.path,
     registryTarget: outcome.registry_target || null,
     publicUrl: outcome.public_url || null,
+    remembered: outcome.remembered || null,
   };
   if (push) pushHistory(tab, entry);
   else replaceEntry(tab, entry);
@@ -1782,6 +1834,9 @@ async function choose(choice) {
         ...pending.outcome,
         kind: "navigate",
         source: choice === "registry" ? "github_registry" : "public_icann",
+        // The choice is remembered from now on, so the chrome offers a way to
+        // forget it again.
+        remembered: choice === "registry" ? "github_registry" : "public_icann",
         url,
       },
       { tab, push: true },
@@ -2207,6 +2262,7 @@ function bind() {
 
   els.chooseRegistry.addEventListener("click", () => choose("registry"));
   els.choosePublic.addEventListener("click", () => choose("public"));
+  els.forgetChoice.addEventListener("click", forgetRememberedChoice);
   els.modalCancel.addEventListener("click", hideModal);
   els.modal.querySelector("[data-close]").addEventListener("click", hideModal);
 
@@ -2383,9 +2439,15 @@ async function boot() {
       }
       document.title = `Free Domain Browser ${info.version}`;
       els.start.dataset.platform = info.platform;
+      state.chat.available = info.chat_available !== false;
+      if (!state.chat.available) {
+        // Chat signs with a key kept in the OS keychain. Without one there is
+        // nothing to show, so the entry point is hidden instead of failing.
+        els.chatToggle.hidden = true;
+      }
       if (els.statusMode) {
         els.statusMode.textContent =
-          state.contentMode === "webview" ? "Iframe tabs · UI 12" : "Iframe tabs · UI 12";
+          state.contentMode === "webview" ? "Native tabs · UI 12" : "Iframe tabs · UI 12";
       }
     } catch {
       state.contentMode = "iframe";
@@ -2403,7 +2465,9 @@ async function boot() {
     return;
   }
 
-  ensureChatSnapshot().catch(() => {});
+  if (state.chat.available) {
+    ensureChatSnapshot().catch(() => {});
+  }
 }
 
 boot();

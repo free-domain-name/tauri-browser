@@ -14,7 +14,7 @@ use std::{
 
 use iroh::EndpointId;
 
-use super::protocol::{MAX_TEXT_CHARS, MESSAGE_MAX_SKEW_MS};
+use super::protocol::MAX_TEXT_CHARS;
 
 pub const SEND_COOLDOWN: Duration = Duration::from_secs(5);
 pub const DUPLICATE_WINDOW: Duration = Duration::from_secs(10 * 60);
@@ -71,10 +71,6 @@ impl Policy {
 
     pub fn unignore(&mut self, sender: &EndpointId) -> bool {
         self.ignored.remove(&sender.to_string())
-    }
-
-    pub fn ignored(&self) -> Vec<String> {
-        self.ignored.iter().cloned().collect()
     }
 
     pub fn check_send(&mut self, text: &str) -> Result<(), LimitError> {
@@ -190,11 +186,6 @@ pub fn normalize(text: &str) -> String {
         .collect::<Vec<_>>()
         .join(" ")
         .to_lowercase()
-}
-
-/// Timestamp tolerance helper shared by the receive path.
-pub fn timestamp_is_fresh(timestamp_ms: i64, now_ms: i64) -> bool {
-    (now_ms - timestamp_ms).abs() <= MESSAGE_MAX_SKEW_MS
 }
 
 #[cfg(test)]

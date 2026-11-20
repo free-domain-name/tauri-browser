@@ -135,6 +135,15 @@ async fn proxy<R: Runtime>(
     let mut current = target;
 
     for hop in 0..=MAX_REDIRECTS {
+        // Every hop is checked, not just the first one: a public destination
+        // may redirect to a loopback or link-local address.
+        if !crate::net::is_public_destination(&current) {
+            return Err(AppError::Network(format!(
+                "refusing to fetch the private address {}",
+                crate::net::host_of(&current)
+            )));
+        }
+
         let response = send_hop(
             &state.http,
             &method,
@@ -281,6 +290,33 @@ fn skip_response_header(name: &str) -> bool {
     )
 }
 
+/// Reads a response body, stopping as soon as it passes the size limit.
+///
+/// The body still has to be buffered — Tauri's URI-scheme responder wants the
+/// whole thing — but the download now stops at the limit instead of pulling an
+/// unbounded response into memory first.
+async fn read_capped_body(response: &mut reqwest::Response) -> AppResult<Vec<u8>> {
+    read_body_with_limit(response, MAX_BODY_BYTES).await
+}
+
+async fn read_body_with_limit(
+    response: &mut reqwest::Response,
+    limit: usize,
+) -> AppResult<Vec<u8>> {
+    let mut body = Vec::new();
+    while let Some(chunk) = response.chunk().await.map_err(AppError::from)? {
+        if body.len() + chunk.len() > limit {
+            return Err(AppError::Network(if limit % (1024 * 1024) == 0 {
+                format!("response is larger than {} MiB", limit / (1024 * 1024))
+            } else {
+                format!("response is larger than {limit} bytes")
+            }));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(body)
+}
+
 fn split_path_and_query(path: &str) -> (&str, Option<&str>) {
     let without_fragment = path.split('#').next().unwrap_or(path);
     match without_fragment.split_once('?') {
@@ -293,7 +329,7 @@ fn split_path_and_query(path: &str) -> (&str, Option<&str>) {
 }
 
 async fn build_response(
-    response: reqwest::Response,
+    mut response: reqwest::Response,
     proxy_domain: &str,
     target_host: Option<&str>,
     final_host: Option<&str>,
@@ -310,14 +346,7 @@ async fn build_response(
     let raw_body = if is_head {
         Vec::new()
     } else {
-        let bytes = response.bytes().await?;
-        if bytes.len() > MAX_BODY_BYTES {
-            return Err(AppError::Network(format!(
-                "response is larger than {} MiB",
-                MAX_BODY_BYTES / (1024 * 1024)
-            )));
-        }
-        bytes.to_vec()
+        read_capped_body(&mut response).await?
     };
 
     let mut rewrite_hosts = vec![proxy_domain];
@@ -398,8 +427,12 @@ fn rewrite_markup(input: &str, proxy_domain: &str, source_hosts: &[&str]) -> Str
         }
         seen.push(key);
 
+        // The optional port is matched and dropped: the proxy serves the
+        // registry name on its own origin, so `http://host:8080/x` becomes
+        // `fdn://host/x` and the request keeps the port of the registry
+        // record's target.
         let pattern = format!(
-            r#"(?i)(?:https?:)?//{}(?P<tail>[/'"?#\s]|$)"#,
+            r#"(?i)(?:https?:)?//{}(?::\d+)?(?P<tail>[/'"?#\s]|$)"#,
             regex::escape(host)
         );
         let Ok(regex) = Regex::new(&pattern) else {
@@ -492,6 +525,24 @@ mod tests {
         let html = r#"<a href="https://example.com.evil.test/">x</a>"#;
         let rewritten = rewrite_markup(html, "hello.fdn", &["example.com"]);
         assert!(rewritten.contains("https://example.com.evil.test/"));
+    }
+
+    #[test]
+    fn rewrites_urls_with_a_port_and_drops_it() {
+        let html =
+            r#"<a href="http://example.com:8080/x">x</a><img src="//example.com:8080/y.png">"#;
+        let rewritten = rewrite_markup(html, "hello.fdn", &["example.com"]);
+        assert!(rewritten.contains(&format!("{}hello.fdn/x", proxy_base())));
+        assert!(rewritten.contains(&format!("{}hello.fdn/y.png", proxy_base())));
+        assert!(!rewritten.contains(":8080"));
+    }
+
+    #[test]
+    fn rewrites_a_base_href_for_the_target_host() {
+        let html = r#"<html><head><base href="https://example.com/app/"></head></html>"#;
+        let rewritten = rewrite_markup(html, "hello.fdn", &["hello.fdn", "example.com"]);
+        assert!(rewritten.contains(&format!(r#"<base href="{}hello.fdn/app/">"#, proxy_base())));
+        assert!(!rewritten.contains("https://example.com"));
     }
 
     #[test]
@@ -611,6 +662,52 @@ mod tests {
 
         assert_eq!(response.status(), reqwest::StatusCode::OK);
         assert_eq!(response.text().await.expect("body"), "ok");
+        server.join().expect("server thread");
+    }
+
+    #[tokio::test]
+    async fn stops_reading_a_body_past_the_limit() {
+        use std::io::{Read, Write};
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let address = listener.local_addr().expect("addr");
+        let server = std::thread::spawn(move || {
+            // Two requests are made: one over the limit, one under it.
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().expect("accept");
+                let mut buffer = [0u8; 4096];
+                let _ = stream.read(&mut buffer).expect("read");
+                stream
+                    .write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 64\r\n\r\n",
+                    )
+                    .expect("write");
+                stream.write_all(&[b'a'; 64]).expect("write");
+            }
+        });
+
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .expect("client");
+        let url = Url::parse(&format!("http://{address}/big")).expect("url");
+        let mut response = client.get(url).send().await.expect("request");
+
+        let error = read_body_with_limit(&mut response, 16)
+            .await
+            .expect_err("a body over the limit must fail");
+        assert!(error.to_string().contains("larger than"));
+
+        // The same body fits under a larger limit.
+        let mut response = client
+            .get(Url::parse(&format!("http://{address}/big")).expect("url"))
+            .send()
+            .await
+            .expect("request");
+        let body = read_body_with_limit(&mut response, 1024)
+            .await
+            .expect("body under the limit");
+        assert_eq!(body.len(), 64);
         server.join().expect("server thread");
     }
 }

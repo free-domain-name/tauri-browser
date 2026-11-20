@@ -174,6 +174,27 @@
     "linux-deb": /\.deb$/i,
   };
 
+  const armPattern = /aarch64|arm64/i;
+  const x64Pattern = /x86_64|x64|amd64/i;
+
+  // A release can ship more than one build for the same target. Taking the
+  // first match would hand an x86-64 visitor an arm64 file, so the asset that
+  // matches the CPU of the visitor wins.
+  function pickAsset(assets, pattern) {
+    const matches = assets.filter(
+      (candidate) =>
+        typeof candidate?.name === "string" && pattern.test(candidate.name),
+    );
+    if (matches.length <= 1) return matches[0] ?? null;
+
+    const agent = navigator.userAgent || "";
+    const wantsArm = armPattern.test(agent) && !x64Pattern.test(agent);
+    const preferred = wantsArm
+      ? matches.find((candidate) => armPattern.test(candidate.name))
+      : matches.find((candidate) => x64Pattern.test(candidate.name));
+    return preferred ?? matches[0];
+  }
+
   async function loadLatestRelease() {
     const downloadSection = document.querySelector("#download");
     if (!downloadSection) return;
@@ -194,10 +215,7 @@
 
       const assets = Array.isArray(release.assets) ? release.assets : [];
       for (const [kind, pattern] of Object.entries(releaseAssets)) {
-        const asset = assets.find(
-          (candidate) =>
-            typeof candidate?.name === "string" && pattern.test(candidate.name),
-        );
+        const asset = pickAsset(assets, pattern);
         if (!asset || typeof asset.browser_download_url !== "string") continue;
 
         for (const link of downloadSection.querySelectorAll(
@@ -253,9 +271,22 @@
       const data = await response.json();
       if (data.truncated) return;
 
-      const recordPattern = /^[a-z0-9_]\/[a-z0-9_]\/[a-z0-9_]\/[a-z0-9_]\/[^/]+\.json$/i;
+      // A record lives at <a>/<b>/<c>/<d>/<domain>.json, where the four
+      // directories are the first four characters of the domain with the dots
+      // removed, padded with "_". Checking that the shard letters match the
+      // file name keeps other JSON in the repository out of the count.
+      const recordPattern =
+        /^[a-z0-9_]\/[a-z0-9_]\/[a-z0-9_]\/[a-z0-9_]\/([^/]+)\.json$/i;
+      const isRecordPath = (path) => {
+        const match = recordPattern.exec(path);
+        if (!match) return false;
+        const name = match[1].toLowerCase();
+        const shard = path.split("/").slice(0, 4).join("").toLowerCase();
+        const expected = name.replace(/\./g, "").padEnd(4, "_").slice(0, 4);
+        return shard === expected;
+      };
       const count = (Array.isArray(data.tree) ? data.tree : []).filter(
-        (entry) => entry?.type === "blob" && recordPattern.test(entry.path),
+        (entry) => entry?.type === "blob" && isRecordPath(entry.path),
       ).length;
 
       setRegistryCount(count);

@@ -22,12 +22,9 @@ pub struct Settings {
     pub nickname: String,
     pub age_confirmed: bool,
     pub show_profile_in_rooms: bool,
-    pub ask_before_joining_site_rooms: bool,
     pub profile: Profile,
     pub profile_version: u32,
     pub ignored: Vec<String>,
-    /// Last panel visibility preference. The plan defaults to off.
-    pub panel_enabled: bool,
 }
 
 impl Default for Settings {
@@ -36,11 +33,9 @@ impl Default for Settings {
             nickname: "anon".to_string(),
             age_confirmed: false,
             show_profile_in_rooms: false,
-            ask_before_joining_site_rooms: false,
             profile: Profile::default(),
             profile_version: 0,
             ignored: Vec::new(),
-            panel_enabled: false,
         }
     }
 }

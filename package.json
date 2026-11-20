@@ -9,10 +9,10 @@
     "dev:verbose": "node scripts/tauri.mjs dev -v",
     "build": "node scripts/tauri.mjs build",
     "doctor": "node scripts/doctor.mjs",
-    "android:init": "tauri android init",
-    "android:dev": "tauri android dev",
-    "android:build": "tauri android build --apk",
-    "icon": "tauri icon assets/icon.svg --ios-color \"#080d24\""
+    "android:init": "node scripts/tauri.mjs android init",
+    "android:dev": "node scripts/tauri.mjs android dev",
+    "android:build": "node scripts/tauri.mjs android build --apk",
+    "icon": "node scripts/tauri.mjs icon assets/icon.svg --ios-color \"#080d24\""
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

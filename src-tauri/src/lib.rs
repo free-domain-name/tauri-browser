@@ -15,6 +15,7 @@
 pub mod browser;
 pub mod chat;
 mod error;
+mod net;
 mod proxy;
 mod registry;
 mod resolver;
@@ -139,6 +140,7 @@ struct BrowserInfo {
     registry_base: &'static str,
     platform: &'static str,
     content_mode: &'static str,
+    chat_available: bool,
 }
 
 #[tauri::command]
@@ -149,6 +151,7 @@ fn browser_info() -> BrowserInfo {
         registry_base: registry::REGISTRY_RAW_BASE,
         platform: std::env::consts::OS,
         content_mode: browser::content_mode(),
+        chat_available: chat::platform_supported(),
     }
 }
 
@@ -201,7 +204,6 @@ pub fn run() {
             chat::chat_set_nickname,
             chat::chat_update_profile,
             chat::chat_confirm_age,
-            chat::chat_set_active_tab,
             chat::chat_ignore,
             chat::chat_unignore,
             chat::chat_clear_local_data

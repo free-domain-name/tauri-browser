@@ -18,7 +18,7 @@
 //! 3. the GitHub raw CDN.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::RwLock;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -151,23 +151,6 @@ impl RegistryClient {
         format!("{REGISTRY_RAW_BASE}/{}", Self::shard_path(domain))
     }
 
-    pub fn cache_dir(&self) -> &Path {
-        &self.cache_dir
-    }
-
-    /// Cache-only lookup used by redirect handling (never performs I/O).
-    pub fn cached(&self, domain: &str) -> Option<RegistryRecord> {
-        let now = SystemTime::now();
-        let memory = self
-            .memory
-            .read()
-            .unwrap_or_else(|poison| poison.into_inner());
-        memory
-            .get(domain)
-            .filter(|entry| entry.is_fresh(now))
-            .and_then(|entry| entry.record.clone())
-    }
-
     /// Resolve one name. `Ok(None)` means the registry does not contain it.
     pub async fn lookup(&self, domain: &str) -> AppResult<Option<RegistryRecord>> {
         let domain = normalize_domain(domain)?;
@@ -271,7 +254,10 @@ impl RegistryClient {
         let entry: DiskEntry = serde_json::from_slice(&bytes).ok()?;
         let cached = entry.into_cached()?;
         if let Some(record) = &cached.record {
-            if record.domain != domain {
+            // A cached file is untrusted input: it can be edited by hand or
+            // left behind by an older client. Validate it like a record that
+            // just came off the network, and drop it when it does not hold up.
+            if validate_record(record, domain).is_err() {
                 let _ = tokio::fs::remove_file(&path).await;
                 return None;
             }
@@ -377,6 +363,12 @@ fn validate_record(record: &RegistryRecord, expected_domain: &str) -> AppResult<
             "target_url must not contain a query or fragment".into(),
         ));
     }
+    if !crate::net::is_public_destination(&target) {
+        return Err(AppError::Registry(format!(
+            "target_url points at a private or local address ({})",
+            crate::net::host_of(&target)
+        )));
+    }
     Ok(())
 }
 
@@ -464,6 +456,29 @@ mod tests {
             ttl: 3600,
         };
         assert!(validate_record(&record, "example.com").is_err());
+    }
+
+    #[test]
+    fn rejects_a_record_pointing_at_a_private_address() {
+        for target_url in [
+            "http://127.0.0.1",
+            "http://localhost",
+            "http://10.0.0.5",
+            "http://192.168.0.5",
+            "http://169.254.169.254",
+            "http://[::1]",
+        ] {
+            let record = RegistryRecord {
+                domain: "example.com".into(),
+                target_url: target_url.into(),
+                owner_github: "someone".into(),
+                ttl: 3600,
+            };
+            assert!(
+                validate_record(&record, "example.com").is_err(),
+                "{target_url} should be rejected"
+            );
+        }
     }
 
     #[test]

@@ -901,7 +901,7 @@ input {
   min-height: 0;
   overflow: hidden;
   /* Clip every descendant, including accidentally fixed iframes, to the page
-     box. The native child webview is positioned separately in JS. */
+     box. */
   contain: paint;
   background: var(--surface);
 }
@@ -922,8 +922,9 @@ input {
   display: none;
 }
 
-/* Desktop tabs render in native child webviews; the iframe layer must not
-   exist there at all, otherwise an old/blank iframe can cover the chrome. */
+/* The native child-webview renderer is dormant. If it is ever switched on, the
+   iframe layer must not exist at the same time, otherwise an old/blank iframe
+   can cover the chrome. */
 :root[data-content-mode="webview"] .frames {
   display: none;
 }
@@ -1430,6 +1431,27 @@ button.secondary:hover {
   color: var(--muted);
   font: 10.5px/1 var(--mono);
   opacity: 0.8;
+}
+
+.statusbar-choice {
+  flex: 0 0 auto;
+  height: 18px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font: 10.5px/1 var(--sans);
+  cursor: pointer;
+}
+
+.statusbar-choice:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.statusbar-choice[hidden] {
+  display: none;
 }
 
 /* ------------------------------------------------------------------ mobile */

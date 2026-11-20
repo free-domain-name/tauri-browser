@@ -108,6 +108,11 @@ pub struct NavigationOutcome {
     pub public_url: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub registry_target: Option<String>,
+    /// Set when the destination was picked from a choice that was remembered
+    /// from an earlier visit. The chrome uses it to offer a way to forget that
+    /// choice.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remembered: Option<Source>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub message: Option<String>,
 }
@@ -130,6 +135,7 @@ impl NavigationOutcome {
             registry_url,
             public_url,
             registry_target: None,
+            remembered: None,
             message: None,
         }
     }
@@ -361,6 +367,7 @@ impl Navigator {
                     registry_url: None,
                     public_url: Some(public_url),
                     registry_target: None,
+                    remembered: None,
                     message: Some(error.to_string()),
                 });
             }
@@ -387,6 +394,7 @@ impl Navigator {
                     registry_url: None,
                     public_url: Some(public_url),
                     registry_target: None,
+                    remembered: None,
                     message: Some(message.into()),
                 });
             }
@@ -409,20 +417,27 @@ impl Navigator {
             registry_url: Some(registry_url.clone()),
             public_url: Some(public_url.clone()),
             registry_target: Some(record.target_url.clone()),
+            remembered: None,
             message: None,
         };
 
         if let Some(choice) = self.decision(&parsed.domain) {
             return Ok(match choice {
-                Choice::Registry => registry_plan,
-                Choice::Public => NavigationOutcome::navigate(
-                    &parsed.domain,
-                    &parsed.path,
-                    Source::PublicIcann,
-                    public_url.clone(),
-                    Some(registry_url),
-                    Some(public_url),
-                ),
+                Choice::Registry => NavigationOutcome {
+                    remembered: Some(Source::GithubRegistry),
+                    ..registry_plan
+                },
+                Choice::Public => NavigationOutcome {
+                    remembered: Some(Source::PublicIcann),
+                    ..NavigationOutcome::navigate(
+                        &parsed.domain,
+                        &parsed.path,
+                        Source::PublicIcann,
+                        public_url.clone(),
+                        Some(registry_url),
+                        Some(public_url),
+                    )
+                },
             });
         }
 
@@ -436,6 +451,7 @@ impl Navigator {
                 registry_url: Some(registry_url),
                 public_url: Some(public_url),
                 registry_target: Some(record.target_url),
+                remembered: None,
                 message: None,
             });
         }

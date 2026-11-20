@@ -318,10 +318,10 @@
             <p class="fineprint">
               Registry records are public and PR-reviewed at
               <span class="mono">github.com/free-domain-name/registry</span>.
-              Desktop tabs render in native webviews, so framing headers do not apply.
-              On the mobile build, public sites that send
+              Pages load in an iframe, so public sites that send
               <span class="mono">X-Frame-Options</span> may refuse to render — use the
-              external-open button there.
+              external-open button for those. Registry names are served through the
+              local proxy, which strips those headers.
             </p>
           </div>
         </section>
@@ -588,6 +588,7 @@
           <span id="statusText">Ready</span>
         </span>
         <span id="statusUrl" class="statusbar-url">Ready</span>
+        <button id="forgetChoice" class="statusbar-choice" type="button" hidden></button>
         <span id="statusMode" class="statusbar-mode">Iframe tabs · UI 12</span>
       </footer>
 

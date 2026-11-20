@@ -79,9 +79,11 @@ console.log("  - a different CARGO_HOME, Rust toolchain or RUSTFLAGS");
 console.log("  - a feature/profile change, or a changed Cargo.lock");
 console.log("  - deleting src-tauri/target (cargo clean, disk cleaner, iCloud sync)");
 
+// Cargo resolves a relative CARGO_TARGET_DIR against src-tauri, where the
+// Tauri CLI runs it — not against the repository root.
 const targetOverride =
   process.env.CARGO_TARGET_DIR &&
-  path.resolve(root, process.env.CARGO_TARGET_DIR) !== expectedTarget;
+  path.resolve(srcTauri, process.env.CARGO_TARGET_DIR) !== expectedTarget;
 const tempCargoHome =
   process.env.CARGO_HOME &&
   (process.env.CARGO_HOME.startsWith("/tmp/") ||

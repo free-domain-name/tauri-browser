@@ -323,6 +323,12 @@
       .replace(
         /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
         '<a href="$2" target="_blank" rel="noreferrer">$1</a>',
+      )
+      // Bare links in the release notes. A URL that is already the target of
+      // a Markdown link sits behind an opening parenthesis and is skipped.
+      .replace(
+        /(?<![("])(https?:\/\/[^\s<>]+)/g,
+        '<a href="$1" target="_blank" rel="noreferrer">$1</a>',
       );
   }
 
@@ -400,31 +406,50 @@
         )
         .sort((a, b) => b.recent_score - a.recent_score)
         .slice(0, 6);
+      let rows = scored;
 
       if (!scored.length) {
+        // Early on, nothing is scored yet. The newest names are more useful
+        // than an empty table, so they take the place of the leaderboard.
+        rows = domains
+          .filter((entry) => entry && typeof entry.domain === "string")
+          .sort((a, b) =>
+            String(b.updated_at || "").localeCompare(String(a.updated_at || "")),
+          )
+          .slice(0, 6);
+      }
+
+      if (!rows.length) {
         target.innerHTML =
-          '<p class="pulse-empty">No scored reviews in the last seven days yet. ' +
-          '<a href="https://github.com/free-domain-name/registry" target="_blank" rel="noreferrer">Review the first name</a>.</p>';
+          '<p class="pulse-empty">The registry is empty so far. ' +
+          '<a href="https://github.com/free-domain-name/registry" target="_blank" rel="noreferrer">Claim the first name</a>.</p>';
         return;
       }
 
-      const rows = scored.map((entry) => {
-        const score = Math.round(entry.recent_score);
+      const items = rows.map((entry) => {
         const votes = Number.isFinite(entry.recent_votes) ? entry.recent_votes : 0;
+        const comments = Number.isFinite(entry.comments) ? entry.comments : 0;
         const url =
           typeof entry.url === "string" &&
           /^https:\/\/github\.com\/free-domain-name\/registry\//.test(entry.url)
             ? entry.url
             : "#";
         const domain = escapeHtml(entry.domain || "unknown");
+        const hasScore = typeof entry.recent_score === "number";
+        const score = hasScore
+          ? `<span class="pulse-score">${Math.round(entry.recent_score)}%</span>`
+          : "";
+        const detail = hasScore
+          ? `${votes} vote${votes === 1 ? "" : "s"} this week`
+          : `${comments} review${comments === 1 ? "" : "s"} · not scored yet`;
         return (
           `<li class="pulse-row"><a class="pulse-name" href="${url}" ` +
           `target="_blank" rel="noreferrer">${domain}</a>` +
-          `<span class="pulse-score">${score}%</span>` +
-          `<span class="pulse-votes">${votes} vote${votes === 1 ? "" : "s"} this week</span></li>`
+          score +
+          `<span class="pulse-votes">${detail}</span></li>`
         );
       });
-      target.innerHTML = `<ul class="pulse-rows">${rows.join("")}</ul>`;
+      target.innerHTML = `<ul class="pulse-rows">${items.join("")}</ul>`;
     } catch {
       /* Keep the loading text. */
     }

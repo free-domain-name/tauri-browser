@@ -48,6 +48,19 @@ toggled. Keep both files for every skin when adding a new one.
 
 - The site uses system fonts and local images. Do not add analytics, remote
   fonts or additional third-party scripts without a privacy review.
+- `site.js` reads two public sources and nothing else: the latest release from
+  the GitHub API (`api.github.com/repos/free-domain-name/tauri-browser/releases/latest`)
+  and the review index from the registry's raw file
+  (`raw.githubusercontent.com/free-domain-name/registry/main/reviews/index.json`).
+  Both are read in the visitor's browser, are not cached by a server of ours
+  and carry no identifier.
+- The "What is new" section renders the release body of the latest release.
+  Only a small, safe subset of Markdown is supported (bullets, headings, bold,
+  inline code and links), and the text is escaped before anything is added to
+  it. The notes are written once, on the release page.
+- The "This week" section renders the rolling seven-day leaderboard from the
+  same review index. A score is an opinion, not a security audit, and the copy
+  says so.
 - `stumble.html` / `stumble.js` read the public `reviews/index.json` snapshot
   from the registry and embed the matching GitHub Discussion with
   [giscus](https://giscus.app). giscus loads a GitHub-backed iframe from

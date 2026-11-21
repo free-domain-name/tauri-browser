@@ -212,6 +212,8 @@
           label.textContent = release.tag_name;
         }
       }
+      renderReleaseDate(release.published_at);
+      renderReleaseNotes(release.body);
 
       const assets = Array.isArray(release.assets) ? release.assets : [];
       for (const [kind, pattern] of Object.entries(releaseAssets)) {
@@ -303,6 +305,132 @@
     }
   }
 
+  // The release notes are written once, on the release page. Only a small,
+  // safe subset of Markdown is rendered here: bullets, headings, bold, inline
+  // code and links. The text is escaped before anything is added to it.
+  function escapeHtml(text) {
+    return String(text)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+  }
+
+  function inlineMarkdown(text) {
+    return text
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(
+        /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g,
+        '<a href="$2" target="_blank" rel="noreferrer">$1</a>',
+      );
+  }
+
+  function renderReleaseDate(published) {
+    const target = document.querySelector("[data-release-date]");
+    if (!target || typeof published !== "string") return;
+    const date = new Date(published);
+    if (Number.isNaN(date.getTime())) return;
+    const text = date.toLocaleDateString(undefined, {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    target.textContent = `· ${text}`;
+  }
+
+  function renderReleaseNotes(body) {
+    const target = document.querySelector("[data-release-notes]");
+    if (!target || typeof body !== "string" || !body.trim()) return;
+
+    const html = [];
+    let inList = false;
+    const flush = () => {
+      if (!inList) return;
+      html.push("</ul>");
+      inList = false;
+    };
+
+    for (const raw of escapeHtml(body).split("\n")) {
+      const line = raw.trim();
+      if (!line) {
+        flush();
+        continue;
+      }
+      const bullet = /^[-*]\s+(.*)$/.exec(line);
+      if (bullet) {
+        if (!inList) {
+          html.push("<ul>");
+          inList = true;
+        }
+        html.push(`<li>${inlineMarkdown(bullet[1])}</li>`);
+        continue;
+      }
+      flush();
+      const heading = /^(#{1,3})\s+(.*)$/.exec(line);
+      if (heading) {
+        html.push(`<h3>${inlineMarkdown(heading[2])}</h3>`);
+        continue;
+      }
+      html.push(`<p>${inlineMarkdown(line)}</p>`);
+    }
+    flush();
+    target.innerHTML = html.join("");
+  }
+
+  // The rolling seven-day leaderboard comes from the registry's generated
+  // index: a plain JSON file, so no API call and no token are needed.
+  async function loadLeaderboard() {
+    const target = document.querySelector("[data-leaderboard]");
+    if (!target) return;
+
+    try {
+      const response = await fetch(
+        "https://raw.githubusercontent.com/free-domain-name/registry/main/reviews/index.json",
+        { cache: "no-cache" },
+      );
+      if (!response.ok) return;
+      const data = await response.json();
+      const domains = Array.isArray(data.domains) ? data.domains : [];
+      const scored = domains
+        .filter(
+          (entry) =>
+            entry && typeof entry.recent_score === "number" &&
+            Number.isFinite(entry.recent_score),
+        )
+        .sort((a, b) => b.recent_score - a.recent_score)
+        .slice(0, 6);
+
+      if (!scored.length) {
+        target.innerHTML =
+          '<p class="pulse-empty">No scored reviews in the last seven days yet. ' +
+          '<a href="https://github.com/free-domain-name/registry" target="_blank" rel="noreferrer">Review the first name</a>.</p>';
+        return;
+      }
+
+      const rows = scored.map((entry) => {
+        const score = Math.round(entry.recent_score);
+        const votes = Number.isFinite(entry.recent_votes) ? entry.recent_votes : 0;
+        const url =
+          typeof entry.url === "string" &&
+          /^https:\/\/github\.com\/free-domain-name\/registry\//.test(entry.url)
+            ? entry.url
+            : "#";
+        const domain = escapeHtml(entry.domain || "unknown");
+        return (
+          `<li class="pulse-row"><a class="pulse-name" href="${url}" ` +
+          `target="_blank" rel="noreferrer">${domain}</a>` +
+          `<span class="pulse-score">${score}%</span>` +
+          `<span class="pulse-votes">${votes} vote${votes === 1 ? "" : "s"} this week</span></li>`
+        );
+      });
+      target.innerHTML = `<ul class="pulse-rows">${rows.join("")}</ul>`;
+    } catch {
+      /* Keep the loading text. */
+    }
+  }
+
   loadRegistryCount();
   loadLatestRelease();
+  loadLeaderboard();
 })();

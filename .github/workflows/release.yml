@@ -82,7 +82,15 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_SIGNING_IDENTITY: ${{ matrix.signing_identity }}
+          # When the Apple secrets are set the build is signed with a Developer
+          # ID and notarized; without them it falls back to the ad-hoc identity
+          # from the matrix, which is what the public releases use today.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || matrix.signing_identity }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           tagName: v__VERSION__
           releaseName: "Free Domain Browser v__VERSION__"
@@ -93,6 +101,8 @@ jobs:
             - Windows: x64 MSI and NSIS installer
             - Linux: x64 AppImage and Debian package
 
+            Every asset is listed in `checksums.txt` with its SHA-256.
+
             These builds are ad-hoc signed or unsigned and are not notarized.
             macOS may require you to allow the app under System Settings → Privacy & Security
             on first launch. Windows SmartScreen may ask for confirmation.
@@ -102,3 +112,58 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Sign the Windows installers
+        # Optional: it only runs when an Authenticode certificate is stored in
+        # the repository secrets. The signed file replaces the uploaded one.
+        if: matrix.platform == 'windows-latest' && env.WINDOWS_CERTIFICATE != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $pfx = Join-Path $env:RUNNER_TEMP "code-signing.pfx"
+          [System.IO.File]::WriteAllBytes(
+            $pfx,
+            [System.Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
+          )
+          $password = ConvertTo-SecureString `
+            -String $env:WINDOWS_CERTIFICATE_PASSWORD `
+            -AsPlainText `
+            -Force
+          Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password | Out-Null
+          $thumbprint = (Get-ChildItem Cert:\CurrentUser\My | Sort-Object NotAfter | Select-Object -Last 1).Thumbprint
+
+          $assets = New-Item -ItemType Directory -Path "$env:RUNNER_TEMP\assets" -Force
+          gh release download "${env:GITHUB_REF_NAME}" --dir $assets.FullName --pattern "*.msi" --pattern "*.exe"
+          Get-ChildItem -Path $assets.FullName -Include *.msi,*.exe -Recurse | ForEach-Object {
+            & signtool sign /sha1 $thumbprint /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 $_.FullName
+            if ($LASTEXITCODE -ne 0) { throw "signtool failed for $($_.FullName)" }
+            gh release upload "${env:GITHUB_REF_NAME}" $_.FullName --clobber
+          }
+          Remove-Item -Force $pfx
+
+  checksums:
+    name: Checksums
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download the release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          gh release download "${GITHUB_REF_NAME}" --dir assets
+
+      - name: Publish checksums.txt
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd assets
+          shasum -a 256 ./* > checksums.txt
+          gh release upload "${GITHUB_REF_NAME}" checksums.txt --clobber
+

@@ -784,7 +784,7 @@ kbd {
 
 .download-cards {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   gap: 12px;
 }
 
@@ -2967,4 +2967,158 @@ kbd {
   content: "—";
   color: var(--accent);
   font-family: var(--mono);
+}
+
+/* What is new: the release card holds the notes that the release page wrote. */
+.release-card {
+  padding: 28px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.release-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  margin: 0 0 14px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.release-meta strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
+.release-notes {
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.release-notes p {
+  margin: 0 0 10px;
+}
+
+.release-notes ul {
+  margin: 0 0 12px;
+  padding-left: 20px;
+}
+
+.release-notes li {
+  margin: 0 0 6px;
+}
+
+.release-notes h3 {
+  margin: 16px 0 8px;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.release-notes a {
+  color: var(--accent);
+}
+
+.release-notes code {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--surface-3);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+}
+
+/* This week: the rolling leaderboard next to the invitation to review. */
+.pulse-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.pulse-list {
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.pulse-rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pulse-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 4px 14px;
+  padding: 11px 12px;
+  border-radius: 10px;
+}
+
+.pulse-row + .pulse-row {
+  border-top: 1px solid var(--line);
+}
+
+.pulse-row:hover {
+  background: var(--surface-2);
+}
+
+.pulse-name {
+  color: var(--text);
+  font-weight: 600;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.pulse-name:hover {
+  color: var(--accent);
+}
+
+.pulse-score {
+  color: var(--registry);
+  font-family: var(--mono);
+  font-size: 14px;
+}
+
+.pulse-votes {
+  grid-column: 1 / -1;
+  color: var(--faint);
+  font-size: 12px;
+}
+
+.pulse-empty {
+  margin: 0;
+  padding: 14px 12px;
+  color: var(--muted);
+}
+
+.pulse-aside {
+  padding: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.pulse-aside h3 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+.pulse-aside p {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+@media (max-width: 860px) {
+  .pulse-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

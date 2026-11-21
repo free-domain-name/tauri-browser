@@ -80,6 +80,7 @@
           <a href="#why">Why</a>
           <a href="#how">How it works</a>
           <a href="#download">Download</a>
+          <a href="#whats-new">What&rsquo;s new</a>
           <a href="#start">How to use</a>
           <a href="#skins">Skins</a>
           <a href="#customize">Customize</a>
@@ -238,9 +239,12 @@
                 Latest release <strong data-release-version>GitHub Releases</strong>
               </p>
               <p class="download-note">
-                These builds are not notarized. macOS may ask you to allow the app under
-                <strong>System Settings → Privacy &amp; Security</strong>; Windows SmartScreen may
-                ask for confirmation. Android is currently built from source.
+                These builds are signed ad hoc and are not notarized, so the first launch asks
+                twice. On macOS, open the DMG, drag the app to Applications, then hold
+                <strong>Control</strong> while clicking it and choose <strong>Open</strong>; that
+                dialog appears once. On Windows, choose <strong>More info → Run anyway</strong>.
+                Every release also publishes a <code>checksums.txt</code> with the SHA-256 of each
+                file. Android is currently built from source.
               </p>
               <div class="hero-actions">
                 <a
@@ -259,6 +263,15 @@
                   rel="noreferrer"
                 >All releases</a>
               </div>
+              <p class="download-note">
+                The Chromium-based rebuild of this browser is in
+                <a
+                  href="https://github.com/free-domain-name/free-domain-browser-cef/releases"
+                  target="_blank"
+                  rel="noreferrer"
+                >preview</a>. It builds for macOS, Linux and Windows, but the packages are
+                unsigned and there is no release yet.
+              </p>
             </div>
 
             <div class="download-cards">
@@ -315,6 +328,17 @@
                     rel="noreferrer"
                   >.deb</a>
                 </div>
+              </article>
+              <article class="download-card">
+                <span class="download-os">Chrome · Firefox</span>
+                <strong>The resolver extension</strong>
+                <span class="download-detail">No install, no signature</span>
+                <a
+                  class="download-link"
+                  href="https://github.com/free-domain-name/free-domain-name-extension"
+                  target="_blank"
+                  rel="noreferrer"
+                >Get the extension</a>
               </article>
             </div>
           </div>
@@ -1022,6 +1046,122 @@ npm run dev</code></pre>
         </div>
       </section>
 
+      <section class="section" id="whats-new">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <p class="kicker">What&rsquo;s new</p>
+              <h2>The release notes, written once.</h2>
+            </div>
+            <p class="section-lede">
+              These are the notes from the GitHub release itself, so this page never drifts from
+              what was actually shipped.
+            </p>
+          </div>
+          <div class="release-card">
+            <p class="release-meta">
+              <strong data-release-version>Latest release</strong>
+              <span data-release-date></span>
+            </p>
+            <div class="release-notes" data-release-notes>
+              <p>Loading the release notes&hellip;</p>
+            </div>
+            <div class="hero-actions">
+              <a
+                class="button primary"
+                href="https://github.com/free-domain-name/tauri-browser/releases/latest"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open latest release
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" /></svg>
+              </a>
+              <a
+                class="button quiet"
+                href="https://github.com/free-domain-name/tauri-browser/releases"
+                target="_blank"
+                rel="noreferrer"
+              >All releases</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-alt" id="pulse">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <p class="kicker">This week</p>
+              <h2>What the registry is saying.</h2>
+            </div>
+            <p class="section-lede">
+              A rolling seven-day view of the community reviews. Scores are opinions, not security
+              audits, and they can be stale.
+            </p>
+          </div>
+          <div class="pulse-grid">
+            <div class="pulse-list" data-leaderboard>
+              <p>Loading this week&rsquo;s reviews&hellip;</p>
+            </div>
+            <aside class="pulse-aside">
+              <h3>Review a name</h3>
+              <p>
+                Every record in the registry has a GitHub discussion. React to the reviews that are
+                already there, or write one if you know the domain. Two minutes, and the next
+                person gets a better answer.
+              </p>
+              <div class="hero-actions">
+                <a
+                  class="button quiet"
+                  href="https://github.com/free-domain-name/registry"
+                  target="_blank"
+                  rel="noreferrer"
+                >Open the registry</a>
+                <a class="button quiet" href="stumble.html">Stumble a name</a>
+              </div>
+            </aside>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="chat">
+        <div class="wrap">
+          <div class="section-head">
+            <div>
+              <p class="kicker">Community chat</p>
+              <h2>A room that does not need a server.</h2>
+            </div>
+            <p class="section-lede">
+              The chat in the app is peer to peer. It works over a public relay, and it needs no
+              account.
+            </p>
+          </div>
+          <div class="feature-grid">
+            <article class="feature">
+              <h3>No account</h3>
+              <p>
+                There is no sign-up and no profile. Open the chat panel and you are in it, and the
+                browser keeps no copy of what you wrote.
+              </p>
+            </article>
+            <article class="feature">
+              <h3>Encrypted on the wire</h3>
+              <p>
+                Messages are encrypted between peers. The relay forwards packets it cannot read,
+                so it can see who is connected and when, not what was said.
+              </p>
+            </article>
+            <article class="feature">
+              <h3>Written by people</h3>
+              <p>
+                The same rule as the registry: human-written comments only, no AI-generated names
+                or replies, and no bulk promotion.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <section class="section section-alt" id="faq">
         <div class="wrap faq-wrap">
           <div class="section-head">
@@ -1168,6 +1308,7 @@ npm run dev</code></pre>
             <a href="https://github.com/free-domain-name/tauri-browser" target="_blank" rel="noreferrer">Browser source</a>
             <a href="https://github.com/free-domain-name/tauri-browser/releases/latest" target="_blank" rel="noreferrer">Releases</a>
             <a href="stumble.html">Stumble the registry</a>
+            <a href="#chat">Community chat</a>
             <a href="https://free-domain-name.github.io/">Community home</a>
             <a href="https://github.com/free-domain-name/registry" target="_blank" rel="noreferrer">Registry</a>
           </div>

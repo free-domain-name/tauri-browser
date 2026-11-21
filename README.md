@@ -54,6 +54,19 @@ The builds are ad-hoc signed or unsigned and are not notarized, so macOS and
 Windows may ask you to confirm the first launch. Android is currently built
 from source.
 
+Every release publishes a `checksums.txt` with the SHA-256 of each file, and
+the notes of each release are in [CHANGELOG.md](CHANGELOG.md).
+
+**Already on Chrome or Firefox?** The
+[Free Domain Name Resolver extension](https://github.com/free-domain-name/free-domain-name-extension)
+does the same resolution in your existing browser, with nothing to install and
+nothing to sign.
+
+A Chromium-based rebuild of this browser is in
+[preview](https://github.com/free-domain-name/free-domain-browser-cef/releases).
+It builds for macOS, Linux and Windows, but the packages are unsigned and there
+is no release yet.
+
 ## How resolution works
 
 ```

@@ -27,5 +27,7 @@ jobs:
       - name: Enable auto-merge
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: gh pr merge --squash --auto "$PR_NUMBER"
+          # The pull request URL carries the repository, so the command does not
+          # need a checkout to know which repository to work on.
+          PR_URL: ${{ github.event.pull_request.html_url }}
+        run: gh pr merge --squash --auto "$PR_URL"

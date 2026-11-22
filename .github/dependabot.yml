@@ -1,0 +1,52 @@
+# Dependabot keeps the dependency tree current.
+#
+# Every update goes through the same build as any other pull request, and
+# .github/workflows/dependabot-auto-merge.yml merges it once that build is
+# green. The updates are grouped, because the Rust tree has hundreds of
+# packages and one pull request per package would mean one full build per
+# package.
+version: 2
+
+updates:
+  # The desktop runtime: Tauri, the proxy, the registry and the chat.
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
+    schedule:
+      interval: "daily"
+      time: "06:00"
+      timezone: "Europe/London"
+    # Keep the manifest as it is and let the lock file carry the exact
+    # versions. A new major release still widens the requirement, so the
+    # upgrade shows up as a pull request of its own.
+    versioning-strategy: "increase-if-necessary"
+    open-pull-requests-limit: 10
+    groups:
+      rust:
+        patterns: ["*"]
+
+  # The chrome and the scripts.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "daily"
+      time: "06:00"
+      timezone: "Europe/London"
+    versioning-strategy: "increase-if-necessary"
+    open-pull-requests-limit: 5
+    groups:
+      npm:
+        patterns: ["*"]
+
+  # The workflows themselves. The actions are pinned by commit, and Dependabot
+  # keeps those pins current.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/London"
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        patterns: ["*"]

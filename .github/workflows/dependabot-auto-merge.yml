@@ -1,0 +1,31 @@
+name: Dependabot auto-merge
+
+# Dependabot opens the pull requests, this workflow merges them. The merge
+# waits for the required status checks, so a pull request that does not build
+# is never merged and a pull request that builds is merged without anybody
+# looking at it.
+#
+# The workflow runs on `pull_request_target` because the merge needs a
+# writable token. It never checks out the pull request, it only talks to the
+# GitHub API, and it only ever touches Dependabot's own pull requests.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    name: Merge when the build passes
+    # Only Dependabot's own pull requests are merged this way.
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: gh pr merge --squash --auto "$PR_NUMBER"

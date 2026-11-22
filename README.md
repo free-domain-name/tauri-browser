@@ -507,6 +507,8 @@ The [security workflow](.github/workflows/security.yml) runs on pushes to
 - **`npm audit --audit-level=high`** is an always-on baseline for high and
   critical npm advisories.
 - **RustSec** checks `src-tauri/Cargo.lock` for vulnerable Rust dependencies.
+  The step runs `cargo audit` directly, so a vulnerable dependency fails the
+  job. The published action then adds the same report to the commit.
 
 Snyk needs a repository secret named `SNYK_TOKEN` (Snyk account settings → API
 token). Add it under **Settings → Secrets and variables → Actions**. Until it is

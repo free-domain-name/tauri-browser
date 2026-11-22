@@ -509,6 +509,45 @@ fn html_escape(value: &str) -> String {
 mod tests {
     use super::*;
 
+    /// Reads a whole HTTP request off `stream` and returns it in lower case.
+    ///
+    /// The fake servers below have to consume the request before they close
+    /// the socket. Closing a socket that still holds unread request bytes
+    /// sends a reset instead of a clean shutdown, and Windows turns that
+    /// reset into a `10054` failure of the request that is waiting for the
+    /// response. A single `read` is not enough: the request can still arrive
+    /// in several segments.
+    fn read_request(stream: &mut std::net::TcpStream) -> String {
+        use std::io::Read;
+
+        let mut request = Vec::new();
+        let mut chunk = [0u8; 1024];
+        while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+            match stream.read(&mut chunk) {
+                Ok(0) => break,
+                Ok(read) => request.extend_from_slice(&chunk[..read]),
+                Err(_) => break,
+            }
+        }
+        String::from_utf8_lossy(&request).to_ascii_lowercase()
+    }
+
+    /// Answers a request with `body` and then closes the connection.
+    ///
+    /// Write errors are ignored on purpose: the client hangs up while the
+    /// body is still being written when the body is over the limit, and that
+    /// broken pipe is the behaviour under test.
+    fn write_response(stream: &mut std::net::TcpStream, body: &[u8]) {
+        use std::io::Write;
+
+        let head = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        let _ = stream.write_all(head.as_bytes());
+        let _ = stream.write_all(body);
+    }
+
     #[test]
     fn rewrites_target_and_registry_hosts_to_the_proxy() {
         let html = r#"<a href="https://example.com/a">x</a><img src="//example.com/b.png"><a href="https://hello.fdn/c">y</a>"#;
@@ -583,21 +622,13 @@ mod tests {
 
     #[tokio::test]
     async fn fetches_hostname_targets_as_themselves() {
-        use std::io::{Read, Write};
-
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
         let address = listener.local_addr().expect("addr");
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("accept");
-            let mut buffer = [0u8; 4096];
-            let read = stream.read(&mut buffer).expect("read");
-            let request = String::from_utf8_lossy(&buffer[..read]).to_ascii_lowercase();
+            let request = read_request(&mut stream);
             assert!(request.contains("host: target.test"), "got: {request}");
-            stream
-                .write_all(
-                    b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok",
-                )
-                .expect("write");
+            write_response(&mut stream, b"ok");
         });
 
         let client = reqwest::Client::builder()
@@ -624,22 +655,14 @@ mod tests {
 
     #[tokio::test]
     async fn ip_targets_keep_the_registry_host_header() {
-        use std::io::{Read, Write};
-
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
         let address = listener.local_addr().expect("addr");
         let server = std::thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("accept");
-            let mut buffer = [0u8; 4096];
-            let read = stream.read(&mut buffer).expect("read");
-            let request = String::from_utf8_lossy(&buffer[..read]).to_ascii_lowercase();
+            let request = read_request(&mut stream);
             assert!(request.contains("host: example.com"), "got: {request}");
             assert!(request.contains("get /hello http/1.1"), "got: {request}");
-            stream
-                .write_all(
-                    b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 2\r\n\r\nok",
-                )
-                .expect("write");
+            write_response(&mut stream, b"ok");
         });
 
         let client = reqwest::Client::builder()
@@ -667,29 +690,22 @@ mod tests {
 
     #[tokio::test]
     async fn stops_reading_a_body_past_the_limit() {
-        use std::io::{Read, Write};
-
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
-        let address = listener.local_addr().expect("addr");
-        let server = std::thread::spawn(move || {
-            // Two requests are made: one over the limit, one under it.
-            for _ in 0..2 {
-                let (mut stream, _) = listener.accept().expect("accept");
-                let mut buffer = [0u8; 4096];
-                let _ = stream.read(&mut buffer).expect("read");
-                stream
-                    .write_all(
-                        b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 64\r\n\r\n",
-                    )
-                    .expect("write");
-                stream.write_all(&[b'a'; 64]).expect("write");
-            }
-        });
+        const BODY: [u8; 64] = [b'a'; 64];
 
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .build()
             .expect("client");
+
+        // A body past the limit stops the download with an error.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let address = listener.local_addr().expect("addr");
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            read_request(&mut stream);
+            write_response(&mut stream, &BODY);
+        });
+
         let url = Url::parse(&format!("http://{address}/big")).expect("url");
         let mut response = client.get(url).send().await.expect("request");
 
@@ -697,17 +713,28 @@ mod tests {
             .await
             .expect_err("a body over the limit must fail");
         assert!(error.to_string().contains("larger than"));
+        drop(response);
+        server.join().expect("server thread");
 
-        // The same body fits under a larger limit.
-        let mut response = client
-            .get(Url::parse(&format!("http://{address}/big")).expect("url"))
-            .send()
-            .await
-            .expect("request");
+        // The same body fits under a larger limit. It gets its own listener so
+        // that the second request never rides on the connection the first one
+        // abandoned.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let address = listener.local_addr().expect("addr");
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            read_request(&mut stream);
+            write_response(&mut stream, &BODY);
+        });
+
+        let url = Url::parse(&format!("http://{address}/big")).expect("url");
+        let mut response = client.get(url).send().await.expect("request");
+
         let body = read_body_with_limit(&mut response, 1024)
             .await
             .expect("body under the limit");
         assert_eq!(body.len(), 64);
+        drop(response);
         server.join().expect("server thread");
     }
 }

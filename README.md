@@ -531,6 +531,18 @@ reports no vulnerabilities. RustSec also prints informational unmaintained and
 unsound advisories from the Linux GTK stack; they are surfaced by the workflow,
 not suppressed.
 
+### Automatic dependency updates
+
+[Dependabot](.github/dependabot.yml) checks the Rust tree, the npm tree and the
+workflow actions every day and opens a grouped pull request for the updates it
+finds. Dependabot security updates are enabled too, so a dependency with a
+known advisory gets a pull request of its own.
+
+A second workflow, [dependabot-auto-merge.yml](.github/workflows/dependabot-auto-merge.yml),
+merges those pull requests once the build is green. The merge waits for the
+status checks that `main` requires, so an update that does not build stays open
+instead of being merged.
+
 ## Known limitations (v1)
 
 - **Framing:** every platform renders pages in an iframe, so public sites that

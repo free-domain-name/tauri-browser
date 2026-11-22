@@ -112,8 +112,25 @@ jobs:
 
       # Snyk Open Source does not scan Cargo manifests directly. RustSec covers
       # the desktop runtime's Rust dependency graph, including Tauri and GTK.
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit
+
+      # The audit is the gate. cargo-audit exits non-zero when a dependency has
+      # a known vulnerability, and that fails the job. Unmaintained and unsound
+      # advisories stay warnings, as they were before.
       - name: Audit Rust dependencies
+        run: cargo audit --file src-tauri/Cargo.lock
+
+      # The action publishes the same report as a check run on the commit and,
+      # for the weekly scheduled run, as an issue. Publishing goes through the
+      # Checks API, which can answer 404 right after the check run is created,
+      # so it is not allowed to fail the job: the step above is the gate. It
+      # still runs when the audit failed, because that is when the report
+      # matters most.
+      - name: Publish the audit report
         uses: rustsec/audit-check@v2.0.0
+        if: ${{ !cancelled() }}
+        continue-on-error: true
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           working-directory: src-tauri

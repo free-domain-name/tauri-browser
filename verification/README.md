@@ -16,12 +16,11 @@ npm run verify -- first-launch # one journey
 npm run verify -- --list       # the names of the journeys
 ```
 
-The runner needs a build of the browser. On macOS:
+The runner needs a build of the browser:
 
 ```sh
 cd ../free-domain-browser-cef
-cargo build --bin free-domain-browser-cef
-cargo run --bin bundle -- --build-only
+scripts/build.sh
 ```
 
 `FDB_CEF_BINARY` overrides the path of the build it starts. The run uses its

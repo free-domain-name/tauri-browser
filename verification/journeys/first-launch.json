@@ -1,0 +1,46 @@
+{
+  "name": "first-launch",
+  "description": "The browser opens on its own start page, never on a search engine.",
+  "steps": [
+    {
+      "do": "waitForSelector",
+      "selector": "#url",
+      "why": "the address bar is there"
+    },
+    {
+      "do": "evaluate",
+      "expression": "return document.getElementById('url').value;",
+      "expect": { "equals": "" },
+      "why": "the address bar starts empty"
+    },
+    {
+      "do": "evaluate",
+      "expression": "return document.getElementById('url').value;",
+      "expect": { "notEquals": "https://yahoo.com/" },
+      "why": "the browser does not start on Yahoo"
+    },
+    {
+      "do": "evaluate",
+      "expression": "return document.getElementById('url').value.toLowerCase().includes('search');",
+      "expect": { "equals": false },
+      "why": "the browser does not start on a search engine"
+    },
+    {
+      "do": "evaluate",
+      "expression": "return document.querySelectorAll('#tabs > *').length;",
+      "expect": { "atLeast": 1 },
+      "why": "there is one tab"
+    },
+    {
+      "do": "targets",
+      "expect": { "contains": "New Tab" },
+      "why": "the start page is loaded"
+    },
+    {
+      "do": "evaluate",
+      "expression": "return document.getElementById('home').getAttribute('title');",
+      "expect": { "notEquals": "" },
+      "why": "the home button is in the toolbar"
+    }
+  ]
+}

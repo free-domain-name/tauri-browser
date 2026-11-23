@@ -1,0 +1,34 @@
+{
+  "name": "navigation",
+  "description": "A name typed into the address bar is resolved and loaded.",
+  "steps": [
+    {
+      "do": "type",
+      "selector": "#url",
+      "text": "hello.fdn",
+      "why": "the name is typed into the address bar"
+    },
+    {
+      "do": "waitFor",
+      "expression": "document.getElementById('url').value.toLowerCase().includes('hello.fdn')",
+      "timeout": 20000,
+      "why": "the address bar shows the name that was asked for"
+    },
+    {
+      "do": "targets",
+      "expect": {
+        "contains": "hello.fdn"
+      },
+      "why": "the page behind the name is loaded",
+      "timeout": 20000
+    },
+    {
+      "do": "evaluate",
+      "expression": "return document.getElementById('sec').title || '';",
+      "expect": {
+        "notEquals": ""
+      },
+      "why": "the address bar shows how the page was reached"
+    }
+  ]
+}

@@ -1,0 +1,69 @@
+{
+  "name": "chrome-controls",
+  "description": "Every button in the toolbar does something a user can see.",
+  "steps": [
+    {
+      "do": "click",
+      "selector": "#settings",
+      "why": "the settings button is pressed"
+    },
+    {
+      "do": "pause",
+      "timeout": 500,
+      "why": "the app has a moment to open the settings",
+      "ms": 600
+    },
+    {
+      "do": "targets",
+      "expect": {
+        "contains": "Settings"
+      },
+      "why": "the settings page opens"
+    },
+    {
+      "do": "click",
+      "selector": "#chat",
+      "why": "the chat button is pressed"
+    },
+    {
+      "do": "pause",
+      "timeout": 500,
+      "why": "the app has a moment to open the chat",
+      "ms": 600
+    },
+    {
+      "do": "targets",
+      "expect": {
+        "contains": "Free Domain Chat"
+      },
+      "why": "the chat panel opens"
+    },
+    {
+      "do": "click",
+      "selector": "#home",
+      "why": "the home button is pressed"
+    },
+    {
+      "do": "pause",
+      "timeout": 500,
+      "why": "the app has a moment to go home",
+      "ms": 600
+    },
+    {
+      "do": "evaluate",
+      "expression": "return document.getElementById('url').value;",
+      "expect": {
+        "equals": ""
+      },
+      "why": "the home button brings the start page back, not Yahoo"
+    },
+    {
+      "do": "evaluate",
+      "expression": "return document.getElementById('back').disabled && document.getElementById('forward').disabled;",
+      "expect": {
+        "truthy": true
+      },
+      "why": "the start page has no history to walk"
+    }
+  ]
+}

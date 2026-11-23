@@ -9,7 +9,6 @@
     "dev:verbose": "node scripts/tauri.mjs dev -v",
     "build": "node scripts/tauri.mjs build",
     "doctor": "node scripts/doctor.mjs",
-    "verify": "node verification/run.mjs",
     "android:init": "node scripts/tauri.mjs android init",
     "android:dev": "node scripts/tauri.mjs android dev",
     "android:build": "node scripts/tauri.mjs android build --apk",

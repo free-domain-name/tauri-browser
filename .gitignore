@@ -30,6 +30,3 @@ Thumbs.db
 
 # Local chat test data
 .dev-chat-data/
-
-# Screenshots from the verification runs
-verification/artifacts/
